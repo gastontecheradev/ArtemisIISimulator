@@ -107,6 +107,7 @@ export function TrajectoryView({ onCredits, onTutorial, onGuides }: { onCredits:
         <span><i className="swatch ret" /> {t('lg.ret')}</span>
         <span><i className="swatch pred" /> {t('lg.pred')}</span>
         <span><i className="swatch plan" /> {t('lg.plan')}</span>
+        <span><i className="swatch ei" /> {t('lg.ei')}</span>
       </div>
     </>
   );

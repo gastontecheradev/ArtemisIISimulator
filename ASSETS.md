@@ -11,7 +11,7 @@ Reglas (ver `CLAUDE.md`): solo imágenes elegidas por Gastón, con crédito "NAS
 | earth-day | https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-topography-bathymetry | Blue Marble Next Generation, April 2004 | NASA Earth Observatory/Reto Stöckli | 2026-11-17 |
 | moon-color | https://svs.gsfc.nasa.gov/4720 | SVS 4720, CGI Moon Kit | NASA's Scientific Visualization Studio | 2026-11-17 |
 
-Cada fila cubre las cuatro versiones que genera `npm run images` (`-2k`/`-4k`, `.webp`/`.jpg`). Originales: `world.topo.bathy.200404.3x5400x2700.jpg` (5400 × 2700, topografía y batimetría, abril de 2004) y `lroc_color_16bit_srgb_4k.tif` (4096 × 2048, 16 bits, mapa de color LROC del CGI Moon Kit). Las dos son equirectangulares con la longitud 0 en el centro. La app las usa en la vista 3D (4K) y en el recuadro del entorno (2K); el mapa 2D sigue con colores lisos.
+Cada fila cubre las versiones que genera `npm run images` (`-2k`/`-4k`, `.webp`/`.jpg`; para la Tierra también `earth-day-pad`, el recorte a resolución completa alrededor de la plataforma). Originales: `world.topo.bathy.200404.3x21600x10800.jpg` (21.600 × 10.800, ~2 km por píxel, topografía y batimetría, abril de 2004; reemplazó a la versión de 5400 × 2700 el mismo día) y `lroc_color_16bit_srgb_4k.tif` (4096 × 2048, 16 bits, mapa de color LROC del CGI Moon Kit). Las dos son equirectangulares con la longitud 0 en el centro. La app las usa en la vista 3D (4K) y en el recuadro del entorno (2K); el mapa 2D sigue con colores lisos.
 
 ## Pendientes
 

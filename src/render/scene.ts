@@ -214,8 +214,11 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     moon: cssVar(container, '--c-body-moon'),
     orbit: cssVar(container, '--c-label'),
     ei: cssVar(container, '--c-caution'),
-  }, isMap, isMap ? null : { size: is3d ? '4k' : '2k', anisotropy: renderer.capabilities.getMaxAnisotropy() });
+  }, isMap, is3d ? { size: '4k', anisotropy: renderer.capabilities.getMaxAnisotropy(), detail: true } : null);
   bodies.setLit(is3d);
+  // The entry interface ring stays on the map and the inset (where it reads as a
+  // reference); in 3D it is hidden: next to the textured Earth it looked like the equator.
+  bodies.eiRing.visible = !is3d;
   const trails = createTrails({
     out: cssVar(container, '--c-trail-out'),
     ret: cssVar(container, '--c-trail-return'),

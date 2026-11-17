@@ -2005,6 +2005,11 @@ button.ann.link.acked {
   background: var(--c-label);
   opacity: 0.35;
 }
+/* Same color and opacity as the ring (render/bodies.ts). */
+.legend .swatch.ei {
+  background: var(--c-caution);
+  opacity: 0.7;
+}
 @media (max-width: 1500px) {
   .map-hud {
     grid-template-columns: repeat(2, auto);

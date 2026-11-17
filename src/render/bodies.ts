@@ -12,6 +12,7 @@ import {
   R_MOON,
 } from '../sim/constants';
 import { Vec3 } from '../sim/math/vec3';
+import { EARTH_DETAIL } from './earthDetail';
 import { KM_TO_SCENE } from './worldToScene';
 
 /** Earth's own glow in 3D (fraction of its color), only so the night side is visible. */
@@ -50,6 +51,17 @@ function circle(radius: number, segments: number, closed: boolean): THREE.Buffer
 export interface BodyTextures {
   readonly size: '2k' | '4k';
   readonly anisotropy: number;
+  /** Also load the high-resolution patch around the pad (EARTH_DETAIL). */
+  readonly detail: boolean;
+}
+
+/** Uniforms of the pad patch, shared by both Earth materials so one load updates both. */
+interface DetailUniforms {
+  uDetail: { value: THREE.Texture | null };
+  /** lonMin, lonMax, latMin, latMax (radians). */
+  uDetailBounds: { value: THREE.Vector4 };
+  uDetailFade: { value: number };
+  uDetailOn: { value: number };
 }
 
 /**
@@ -79,25 +91,49 @@ function earthGeoMatrix(): THREE.Matrix3 {
  * sphere's UVs. That tilts the texture without tilting the geometry, so the pad still
  * falls on a vertex and the rocket rests on the ground. The texture derivative is taken
  * across the seam with the smaller jump (Tarini's method), so no line appears there.
+ * Inside the pad patch (`detail`, once loaded) the texture comes from the patch, fading
+ * into the global one over the last `fade` degrees of its edge.
  */
-function sampleGeographic(material: THREE.Material, geo: THREE.Matrix3): void {
+function sampleGeographic(material: THREE.Material, geo: THREE.Matrix3, detail: DetailUniforms): void {
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uGeo = { value: geo };
+    Object.assign(shader.uniforms, { uGeo: { value: geo }, ...detail });
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vGeoDir;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGeoDir = position;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vGeoDir;\nuniform mat3 uGeo;\nvec4 geoTexel = vec4(1.0);')
+      .replace(
+        '#include <common>',
+        `#include <common>
+        varying vec3 vGeoDir;
+        uniform mat3 uGeo;
+        uniform sampler2D uDetail;
+        uniform vec4 uDetailBounds;
+        uniform float uDetailFade;
+        uniform float uDetailOn;
+        vec4 geoTexel = vec4(1.0);`,
+      )
       .replace(
         '#include <map_fragment>',
         `#ifdef USE_MAP
           vec3 g = normalize(uGeo * vGeoDir);
-          float u = atan(g.y, g.x) / (2.0 * PI) + 0.5;
-          float v = asin(clamp(g.z, -1.0, 1.0)) / PI + 0.5;
+          float lon = atan(g.y, g.x);
+          float lat = asin(clamp(g.z, -1.0, 1.0));
+          float u = lon / (2.0 * PI) + 0.5;
+          float v = lat / PI + 0.5;
           float u2 = fract(u + 0.5) - 0.5;
           float dux = abs(dFdx(u)) <= abs(dFdx(u2)) ? dFdx(u) : dFdx(u2);
           float duy = abs(dFdy(u)) <= abs(dFdy(u2)) ? dFdy(u) : dFdy(u2);
           geoTexel = textureGrad(map, vec2(u, v), vec2(dux, dFdx(v)), vec2(duy, dFdy(v)));
+          // Pad patch: same longitude derivative (it does not cross the seam), rescaled.
+          vec2 span = vec2(uDetailBounds.y - uDetailBounds.x, uDetailBounds.w - uDetailBounds.z);
+          vec2 duv = vec2((lon - uDetailBounds.x) / span.x, (lat - uDetailBounds.z) / span.y);
+          vec2 edge = min(vec2(lon - uDetailBounds.x, lat - uDetailBounds.z), vec2(uDetailBounds.y - lon, uDetailBounds.w - lat));
+          float w = uDetailOn * smoothstep(0.0, uDetailFade, min(edge.x, edge.y));
+          if (w > 0.0) {
+            vec2 scale = vec2(2.0 * PI, PI) / span;
+            vec4 fine = textureGrad(uDetail, duv, vec2(dux, dFdx(v)) * scale, vec2(duy, dFdy(v)) * scale);
+            geoTexel = mix(geoTexel, fine, w);
+          }
           diffuseColor *= geoTexel;
         #endif`,
       )
@@ -107,8 +143,8 @@ function sampleGeographic(material: THREE.Material, geo: THREE.Matrix3): void {
 
 /**
  * Earth and Moon, plus the geometric references that do not depend on images. With
- * `textures` (3D view and inset) they wear the NASA maps (Blue Marble, CGI Moon Kit);
- * until those load, and on the 2D map, they are plain-colored spheres.
+ * `textures` (only the 3D view) they wear the NASA maps (Blue Marble, CGI Moon Kit);
+ * until those load, and on the 2D map and the inset, they are plain-colored spheres.
  */
 export function createBodies(
   colors: { earth: string; moon: string; orbit: string; ei: string },
@@ -140,10 +176,10 @@ export function createBodies(
   // glow takes the texture's color, so its night side is a dim Earth, not a flat disk.
   let disposed = false;
   const loaded: THREE.Texture[] = [];
-  const load = (name: string, apply: (texture: THREE.Texture) => void): void => {
+  const load = (file: string, apply: (texture: THREE.Texture) => void): void => {
     if (!textures) return;
     const loader = new THREE.TextureLoader();
-    const base = `${import.meta.env.BASE_URL}assets/nasa/${name}-${textures.size}`;
+    const base = `${import.meta.env.BASE_URL}assets/nasa/${file}`;
     const done = (texture: THREE.Texture): void => {
       if (disposed) {
         texture.dispose();
@@ -154,14 +190,29 @@ export function createBodies(
       loaded.push(texture);
       apply(texture);
     };
-    loader.load(`${base}.webp`, done, undefined, () => loader.load(`${base}.jpg`, done));
+    // If neither format loads (e.g. the patch was not generated), the body keeps what it had.
+    loader.load(`${base}.webp`, done, undefined, () => loader.load(`${base}.jpg`, done, undefined, () => undefined));
+  };
+  const rad = Math.PI / 180;
+  const detail: DetailUniforms = {
+    uDetail: { value: null },
+    uDetailBounds: { value: new THREE.Vector4(EARTH_DETAIL.lonMin * rad, EARTH_DETAIL.lonMax * rad, EARTH_DETAIL.latMin * rad, EARTH_DETAIL.latMax * rad) },
+    uDetailFade: { value: EARTH_DETAIL.fade * rad },
+    uDetailOn: { value: 0 },
   };
   if (textures) {
     const geo = earthGeoMatrix();
-    sampleGeographic(earthMat.flat, geo);
-    sampleGeographic(earthMat.lit, geo);
+    sampleGeographic(earthMat.flat, geo, detail);
+    sampleGeographic(earthMat.lit, geo, detail);
   }
-  load('earth-day', (texture) => {
+  const size = textures?.size ?? '2k';
+  if (textures?.detail) {
+    load(EARTH_DETAIL.name, (texture) => {
+      detail.uDetail.value = texture;
+      detail.uDetailOn.value = 1;
+    });
+  }
+  load(`earth-day-${size}`, (texture) => {
     for (const m of [earthMat.flat, earthMat.lit]) {
       m.map = texture;
       m.color.set(0xffffff);
@@ -169,7 +220,7 @@ export function createBodies(
     }
     earthMat.lit.emissive.set(0xffffff);
   });
-  load('moon-color', (texture) => {
+  load(`moon-color-${size}`, (texture) => {
     for (const m of [moonMat.flat, moonMat.lit]) {
       m.map = texture;
       m.color.set(0xffffff);
