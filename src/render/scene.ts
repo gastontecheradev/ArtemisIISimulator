@@ -214,7 +214,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     moon: cssVar(container, '--c-body-moon'),
     orbit: cssVar(container, '--c-label'),
     ei: cssVar(container, '--c-caution'),
-  }, isMap);
+  }, isMap, isMap ? null : { size: is3d ? '4k' : '2k', anisotropy: renderer.capabilities.getMaxAnisotropy() });
   bodies.setLit(is3d);
   const trails = createTrails({
     out: cssVar(container, '--c-trail-out'),
@@ -415,6 +415,9 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     // Earth rotates with the pad: that way the launch site always falls on a
     // vertex of the sphere and the rocket rests on the ground, not on a lower facet.
     bodies.earth.rotation.z = EARTH_ROTATION_IN_PLANE * s.t - frameAngle;
+    // Synchronous rotation: the Moon's near side (longitude 0 of its map, local +x)
+    // always faces Earth. Libration is ignored.
+    bodies.moon.rotation.z = Math.atan2(bodies.earth.position.y - bodies.moon.position.y, bodies.earth.position.x - bodies.moon.position.x);
     bodies.eiRing.position.copy(bodies.earth.position);
     bodies.soiRing.position.copy(bodies.moon.position);
     worldToScene(ZERO, s.t, frame, bodies.moonOrbit.position);

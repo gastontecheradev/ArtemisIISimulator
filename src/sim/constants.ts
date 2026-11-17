@@ -31,6 +31,19 @@ export const EARTH_ROTATION_RATE = 7.2921159e-5;
 /** Latitude of pad LC‑39B (degrees). */
 export const LAUNCH_LATITUDE_DEG = 28.627;
 /**
+ * Longitude of pad LC‑39B (degrees, east positive): 80.621° W. Source: Wikipedia
+ * ("Launch Complex 39B"), secondary. Only the 3D view uses it, to place the Earth
+ * texture under the pad; the physics never does.
+ */
+export const LAUNCH_LONGITUDE_DEG = -80.621;
+/**
+ * Azimuth of the model's single plane at the pad (degrees from north). **Unverified
+ * assumption:** due east. It only decides how the Earth texture is laid on the planar
+ * model (which great circle through the pad the orbital plane is); the physics does not
+ * use it. Artemis II's actual launch azimuth is not in the documents used.
+ */
+export const MODEL_PLANE_AZIMUTH_DEG = 90;
+/**
  * Earth's rotation seen in the orbital plane. The model is planar: the ground and the
  * air at the launch site move east at Ω·R·cos(latitude) ≈ 0.408 km/s,
  * and that is the velocity the rocket already has at liftoff.
