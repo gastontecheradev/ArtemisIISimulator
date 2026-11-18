@@ -25,13 +25,32 @@ interface Swatch {
 }
 
 const SWATCHES: Swatch[] = [
-  // Physical panel (cockpit photo)
+  // Physical panel (close-up of the three-axis PFD, session 30). The wide photo of the cockpit is
+  // lit with strong blue light and gives navy blue for the black bezel: this one is more neutral.
+  // The surfaces are nearly black; the lit quarter of the pixels gives the tone the eye reads.
+  // Panel metal: back to the gray of the first cockpit photo (Gastón, session 30: the near-black
+  // metal of the close-up looked too dark on screen).
   { name: 'panel', image: '9.png', box: [0.005, 0.2, 0.03, 0.27], pick: 'median', note: 'panel metal' },
-  { name: 'bezel', image: '9.png', box: [0.205, 0.105, 0.232, 0.125], pick: 'median', note: 'display frame' },
-  { name: 'key', image: '9.png', box: [0.203, 0.193, 0.218, 0.208], pick: 'bright', note: 'function key' },
-  { name: 'switch-plate', image: '9.png', box: [0.012, 0.6, 0.02, 0.64], pick: 'dark', note: 'switch plate' },
+  { name: 'bezel', image: '13.png', box: [0.2866, 0.1557, 0.3179, 0.202], pick: 'bright', top: 0.25, note: 'display bezel' },
+  { name: 'key', image: '13.png', box: [0.3257, 0.16, 0.3413, 0.202], pick: 'bright', top: 0.25, note: 'bezel key' },
+  { name: 'key-label', image: '13.png', box: [0.74, 0.13, 0.763, 0.158], pick: 'median', note: 'labeled bezel key (Fav)' },
+  { name: 'switch-plate', image: '13.png', box: [0.094, 0.5375, 0.115, 0.593], pick: 'dark', top: 0.5, note: 'switch plate' },
+  // Close-up of the first photo of the cockpit (green title bar, guard stripes)
   { name: 'title-bar', image: '9.png', box: [0.4, 0.434, 0.49, 0.448], pick: 'green', note: 'page title bar' },
   { name: 'hazard', image: '9.png', box: [0.595, 0.705, 0.642, 0.735], pick: 'yellow', note: 'guard stripes' },
+  // Display conventions of the photo and of the three-axis PFD close-up (session 30)
+  { name: 'text', image: '13.png', box: [0.299, 0.815, 0.366, 0.838], pick: 'bright', top: 0.03, note: 'default text (white)' },
+  { name: 'softkey-off', image: '13.png', box: [0.218, 0.374, 0.246, 0.407], pick: 'median', note: 'side key label, available' },
+  { name: 'softkey-on', image: '13.png', box: [0.228, 0.671, 0.257, 0.713], pick: 'median', note: 'side key label, active' },
+  { name: 'status', image: '13.png', box: [0.511, 0.32, 0.542, 0.338], pick: 'bright', top: 0.05, note: 'status text (ATPed)' },
+  { name: 'manual', image: '13.png', box: [0.322, 0.337, 0.366, 0.354], pick: 'yellow', top: 0.05, note: 'manual mode' },
+  { name: 'page-band', image: '12.png', box: [0.0537, 0.4614, 0.0998, 0.4683], pick: 'blue', top: 0.3, note: 'lower page band in the title bar' },
+  { name: 'adi-ground', image: '13.png', box: [0.304, 0.532, 0.322, 0.569], pick: 'median', note: 'attitude ball, below the horizon' },
+  // The close-up overexposes the sky band to near white; the wide photo shows it cyan.
+  { name: 'adi-sky', image: '12.png', box: [0.1025, 0.2434, 0.1074, 0.248], pick: 'bright', top: 0.3, note: 'attitude ball, above the horizon' },
+  { name: 'adi-scale', image: '13.png', box: [0.3095, 0.4041, 0.3241, 0.4096], pick: 'median', note: 'attitude scale background' },
+  { name: 'adi-ship', image: '13.png', box: [0.343, 0.521, 0.359, 0.534], pick: 'green', top: 0.05, note: 'spacecraft symbol' },
+  { name: 'rate-bar', image: '13.png', box: [0.418, 0.421, 0.425, 0.513], pick: 'green', top: 0.3, note: 'bars on the attitude scales' },
   // Screen (ascent display)
   { name: 'screen', image: '10.png', box: [0.55, 0.3, 0.8, 0.5], pick: 'median', note: 'screen background' },
   { name: 'value', image: '10.png', box: [0.5, 0.115, 0.6, 0.165], pick: 'green', top: 0.02, note: 'current values' },

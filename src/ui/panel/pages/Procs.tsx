@@ -21,23 +21,23 @@ export function procsActions(s: SimState): SoftAction[] {
   const m = id ? s.maneuvers[id] : null;
   const editable = !!m && s.proc.advanced && m.status === 'pending';
   const actions: SoftAction[] = [
-    { side: 'L', slot: 0, label: 'PROC\n▲', run: () => act((x) => cycleProcedure(x, -1)) },
-    { side: 'L', slot: 1, label: 'PROC\n▼', run: () => act((x) => cycleProcedure(x, 1)) },
-    { side: 'L', slot: 2, label: 'ADV', run: () => act(toggleAdvanced), lit: s.proc.advanced },
-    { side: 'R', slot: 0, label: 'SKIP', run: () => act(skipStep) },
-    { side: 'R', slot: 1, label: 'JUMP\nSTEP', run: () => act(jumpStep) },
+    { side: 'L', slot: 0, label: 'Proc\n▲', run: () => act((x) => cycleProcedure(x, -1)) },
+    { side: 'L', slot: 1, label: 'Proc\n▼', run: () => act((x) => cycleProcedure(x, 1)) },
+    { side: 'L', slot: 2, label: 'Adv', run: () => act(toggleAdvanced), lit: s.proc.advanced, option: true },
+    { side: 'R', slot: 0, label: 'Skip', run: () => act(skipStep) },
+    { side: 'R', slot: 1, label: 'Jump\nStep', run: () => act(jumpStep) },
   ];
   if (m) {
     actions.push(
       { side: 'L', slot: 3, label: 'ΔV +1', run: () => act((x) => adjustDv(x, 0.001)), disabled: !editable, tone: 'command' },
       { side: 'L', slot: 4, label: 'ΔV −1', run: () => act((x) => adjustDv(x, -0.001)), disabled: !editable, tone: 'command' },
-      { side: 'R', slot: 4, label: 'CONF\nΔV', press: 'conf-dv', run: () => act(confirmDv), disabled: m.confirmed || m.status === 'done', lit: m.confirmed, tone: 'command' },
+      { side: 'R', slot: 4, label: 'Conf\nΔV', press: 'conf-dv', run: () => act(confirmDv), disabled: m.confirmed || m.status === 'done', lit: m.confirmed, tone: 'command' },
     );
     if (id === 'E10' || id === 'E12') {
-      actions.push({ side: 'R', slot: 3, label: 'CALC', run: () => act(computeCorrection), lit: m.computed });
+      actions.push({ side: 'R', slot: 3, label: 'Calc', run: () => act(computeCorrection), lit: m.computed });
     }
     if (id === 'MAN') {
-      actions.push({ side: 'R', slot: 3, label: `SYS\n${m.system}`, run: () => act(toggleManualSystem) });
+      actions.push({ side: 'R', slot: 3, label: `Sys\n${m.system}`, run: () => act(toggleManualSystem) });
     }
   }
   return actions;

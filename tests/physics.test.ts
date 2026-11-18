@@ -20,9 +20,54 @@ import {
 } from '../src/sim/constants';
 import { integrateWithEvents } from '../src/sim/events';
 import { ShipState, integrate } from '../src/sim/integrator';
-import { add, distance, dot, length, normalize, scale, sub, vec3 } from '../src/sim/math/vec3';
+import { add, cross, distance, dot, length, normalize, scale, sub, vec3 } from '../src/sim/math/vec3';
+import { INERTIAL_REF, axesFromEuler, eulerOf, lvlh, rotateAxes, rotationBetween } from '../src/sim/attitude';
 import { earthElements, jacobiConstant, timeToDescendTo } from '../src/sim/orbit';
 import { propagate } from '../src/sim/propagate';
+
+describe('actitud de tres ejes', () => {
+  const ref = INERTIAL_REF;
+  const deg = Math.PI / 180;
+
+  it('los ángulos de Euler (cabeceo → guiñada → alabeo) van y vuelven', () => {
+    for (const e of [
+      { pitch: 90 * deg, yaw: 0, roll: 0 },
+      { pitch: -60 * deg, yaw: 20 * deg, roll: 35 * deg },
+      { pitch: 170 * deg, yaw: -45 * deg, roll: -120 * deg },
+    ]) {
+      const back = eulerOf(axesFromEuler(e, ref), ref);
+      expect(back.pitch).toBeCloseTo(e.pitch, 9);
+      expect(back.yaw).toBeCloseTo(e.yaw, 9);
+      expect(back.roll).toBeCloseTo(e.roll, 9);
+    }
+  });
+
+  it('cabeceo positivo levanta la nariz; guiñada positiva la lleva hacia +Y', () => {
+    const up = axesFromEuler({ pitch: 10 * deg, yaw: 0, roll: 0 }, ref);
+    expect(dot(up.x, ref.z)).toBeLessThan(0);
+    const right = axesFromEuler({ pitch: 0, yaw: 10 * deg, roll: 0 }, ref);
+    expect(dot(right.x, ref.y)).toBeGreaterThan(0);
+  });
+
+  it('LVLH: Z al centro del cuerpo, X hacia el movimiento, Y contra el momento angular', () => {
+    const body = { r: vec3(0, 0, 0), v: vec3(0, 0, 0) };
+    const L = lvlh(vec3(7000, 0, 0), vec3(0, 7.5, 0.3), body);
+    expect(L.z.x).toBeCloseTo(-1, 12);
+    expect(dot(L.x, vec3(0, 7.5, 0.3))).toBeGreaterThan(0);
+    expect(dot(L.y, cross(vec3(7000, 0, 0), vec3(0, 7.5, 0.3)))).toBeLessThan(0);
+    expect(dot(cross(L.x, L.y), L.z)).toBeCloseTo(1, 12);
+  });
+
+  it('la rotación entre dos marcos los superpone, también a 180°', () => {
+    const a = axesFromEuler({ pitch: 30 * deg, yaw: 10 * deg, roll: 5 * deg }, ref);
+    for (const b of [axesFromEuler({ pitch: -70 * deg, yaw: -25 * deg, roll: 140 * deg }, ref), rotateAxes(a, a.y, Math.PI)]) {
+      const { axis, angle } = rotationBetween(a, b);
+      const c = rotateAxes(a, axis, angle);
+      expect(distance(c.x, b.x)).toBeLessThan(1e-9);
+      expect(distance(c.y, b.y)).toBeLessThan(1e-9);
+    }
+  });
+});
 
 describe('constantes', () => {
   it('convierte unidades imperiales con factores exactos', () => {

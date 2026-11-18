@@ -85,20 +85,20 @@
   color: var(--c-caution);
 }
 
+/* Master Alarm: square lit pushbutton, WARNING above and CAUTION below (Orion's center panel). */
 .master-alarm {
-  margin-left: auto;
   display: grid;
   grid-template-rows: 1fr 1fr;
-  width: 92px;
-  min-height: 40px;
+  width: 56px;
+  height: 44px;
   padding: 0;
-  border: 2px solid var(--c-key-lo);
+  border: 3px solid var(--c-key-label);
   border-radius: 3px;
   background: var(--c-screen);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 8.5px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
 }
 .master-alarm span {
   display: flex;
@@ -165,17 +165,57 @@
   flex: 1 1 auto;
   min-height: 430px;
 }
+/* Bezel nearly black, as in the photos of Orion's cockpit (it used to be medium gray metal). */
 .du {
   flex: 1 1 0;
   min-width: 0;
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 26px;
-  grid-template-rows: 22px minmax(0, 1fr) 22px;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  grid-template-rows: 24px minmax(0, 1fr) 24px;
   padding: 5px;
-  background: linear-gradient(180deg, var(--c-panel-hi), var(--c-panel) 40%, var(--c-panel-lo));
+  background: linear-gradient(180deg, var(--c-bezel-body-hi), var(--c-bezel-body) 14%, var(--c-bezel-body) 86%, var(--c-panel-lo));
   border: 1px solid var(--c-frame);
   border-radius: 6px;
-  box-shadow: inset 0 1px 0 var(--c-key), 0 1px 3px var(--c-frame);
+  box-shadow: inset 0 1px 0 var(--c-key-label), 0 1px 3px var(--c-frame);
+}
+/* Labeled corner keys (Brt, Dim) and the Tab knob, decorative. */
+.du-corner {
+  align-self: center;
+  justify-self: center;
+  width: 24px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid var(--c-frame);
+  border-radius: 2px;
+  background: var(--c-key-label);
+  color: var(--c-label-dim);
+  font-size: 7.5px;
+  line-height: 13px;
+  text-transform: none;
+  cursor: pointer;
+}
+.du-corner:hover {
+  color: var(--c-label);
+}
+.du-corner.brt {
+  grid-row: 1;
+  grid-column: 1;
+}
+.du-corner.dim {
+  grid-row: 3;
+  grid-column: 1;
+}
+.du-knob {
+  grid-row: 3;
+  grid-column: 3;
+  align-self: center;
+  justify-self: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, var(--c-key-hi), var(--c-key-label) 55%, var(--c-key-lo));
+  box-shadow: 0 0 0 2px var(--c-key-lo);
+  pointer-events: none;
 }
 .du-keys {
   display: flex;
@@ -198,7 +238,7 @@
 .du-keys.bottom {
   grid-column: 2;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   justify-items: center;
   align-items: center;
 }
@@ -216,92 +256,157 @@
   justify-content: space-around;
   align-items: center;
 }
+/* Keys nearly black, with the light ridge the photos show along them. */
 .softkey {
   display: block;
-  width: 17px;
-  height: 12px;
+  width: 18px;
+  height: 11px;
   padding: 0;
   border: 1px solid var(--c-frame);
   border-radius: 2px;
-  background: linear-gradient(180deg, var(--c-key-hi), var(--c-key) 45%, var(--c-key-lo));
+  background: linear-gradient(180deg, transparent 45%, var(--c-key-hi) 45% 55%, transparent 55%), var(--c-key);
+  box-shadow: inset 0 0 0 1px var(--c-key-label);
 }
 .du-keys.top .softkey,
 .du-keys.bottom .softkey {
-  width: 13px;
-  height: 17px;
+  width: 12px;
+  height: 18px;
+  background: linear-gradient(90deg, transparent 44%, var(--c-key-hi) 44% 56%, transparent 56%), var(--c-key);
 }
 button.softkey {
   cursor: pointer;
 }
 button.softkey:hover {
-  background: var(--c-key-hi);
+  box-shadow: inset 0 0 0 1px var(--c-key-hi);
 }
 button.softkey:active {
-  background: var(--c-key-lo);
+  background: var(--c-key-label);
 }
 .softkey.inert {
   pointer-events: none;
 }
 
+/*
+ * Screen: white is the default text color and green marks what is selected or active, as on
+ * Orion's displays (it used to be green for every value). Mixed case, like the real labels.
+ */
 .du-screen {
   grid-column: 2;
   grid-row: 2;
   display: grid;
-  grid-template-rows: 18px minmax(0, 1fr) 20px minmax(0, 1fr) 18px;
+  grid-template-rows: 18px minmax(0, 1fr) 28px minmax(0, 1fr) 18px;
   min-width: 0;
   min-height: 0;
   background: var(--c-screen);
-  border: 4px solid var(--c-bezel);
-  outline: 2px solid var(--c-frame);
+  border: 3px solid var(--c-bezel);
+  outline: 1px solid var(--c-key-label);
   font-size: 11.5px;
+  color: var(--c-text);
+  text-transform: none;
+  letter-spacing: 0;
 }
+/* Tabs drawn as open brackets (sides and base), the active one with green text. */
 .du-menu {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  align-items: center;
+  grid-template-columns: repeat(8, 1fr);
+  align-items: stretch;
+  padding: 0 4px;
   font-size: 10px;
-  color: var(--c-label-dim);
-}
-.du-menu.top {
-  border-bottom: 1px solid var(--c-label-faint);
-}
-.du-menu.bottom {
-  border-top: 1px solid var(--c-label-faint);
+  color: var(--c-text);
 }
 .du-tab {
   text-align: center;
-  line-height: 14px;
+  line-height: 15px;
+  border-left: 1px solid var(--c-label);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.du-tab:first-child {
+  border-left: 1px solid var(--c-label);
+}
+.du-tab:last-child,
+.du-tab.empty + .du-tab.empty {
+  border-left-color: transparent;
+}
+.du-menu.top .du-tab {
+  border-bottom: 1px solid var(--c-label);
+  margin-top: 2px;
+}
+.du-menu.bottom .du-tab {
+  border-top: 1px solid var(--c-label);
+  margin-bottom: 2px;
+}
+.du-tab.empty {
+  border-bottom-color: transparent !important;
+  border-top-color: transparent !important;
 }
 .du-tab.on {
-  color: var(--c-value-hi);
-  outline: 1px solid var(--c-value);
-  outline-offset: -2px;
+  color: var(--c-on);
+  font-weight: 600;
 }
+/* Title bar: tab with both pages stacked (the lower one on a colored band), MET, phase and alarm count. */
 .du-titlebar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: stretch;
-  border-top: 1px solid var(--c-title-bar-hi);
-  border-bottom: 1px solid var(--c-title-bar-hi);
-  font-size: 11px;
-  text-transform: none;
-  line-height: 18px;
+  margin: 1px 0;
+  border-top: 1px solid var(--c-label);
+  border-bottom: 1px solid var(--c-label);
+  font-size: 10.5px;
+  line-height: 13px;
+}
+.t-pages {
+  display: flex;
+  flex-direction: column;
+  min-width: 86px;
+  padding-right: 14px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+  background: var(--c-key-label);
 }
 .t-upper {
-  padding-left: 6px;
-  color: var(--c-label);
-}
-.t-clock {
-  padding: 0 14px 0 8px;
-  color: var(--c-label-dim);
-  font-size: 10px;
+  padding-left: 5px;
+  color: var(--c-text);
 }
 .t-lower {
-  padding-right: 6px;
-  text-align: right;
+  padding-left: 5px;
+  color: var(--c-screen);
+  background: var(--c-page-band);
+  font-weight: 600;
+}
+.t-clock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-left: 1px solid var(--c-label);
+  border-right: 1px solid var(--c-label);
+  color: var(--c-text);
+}
+.t-clock i {
+  font-style: normal;
   color: var(--c-label);
-  background: var(--c-title-bar);
-  clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%);
+}
+.t-phase {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--c-text);
+}
+.t-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  border-left: 1px solid var(--c-label);
+  color: var(--c-text);
+}
+.t-count.on {
+  color: var(--c-caution);
+  font-weight: 600;
 }
 .du-half {
   display: flex;
@@ -322,47 +427,47 @@ button.softkey:active {
   flex-direction: column;
   justify-content: space-around;
 }
+/*
+ * Side key labels: filled boxes with rounded corners, as on Orion's PFD. Gray = option
+ * available, dark green = option selected or action. Lit actions get a brighter border.
+ */
 .du-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 24px;
+  min-height: 26px;
   margin: 0 2px;
   padding: 1px 2px;
   white-space: pre-line;
   text-align: center;
   font-size: 9.5px;
-  line-height: 1.05;
-  color: var(--c-label);
-  background: var(--c-value-dim);
-  border: 1px solid var(--c-value);
+  line-height: 1.1;
+  color: var(--c-text);
+  border: 1px solid transparent;
+  border-radius: 4px;
 }
-.du-actions.left .du-action {
-  clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 0 100%);
+.du-action.off {
+  background: var(--c-softkey-off);
 }
-.du-actions.right .du-action {
-  clip-path: polygon(5px 0, 100% 0, 100% 100%, 0 100%, 0 5px);
+.du-action.on {
+  background: var(--c-softkey-on);
+  border-color: color-mix(in srgb, var(--c-softkey-on) 60%, var(--c-on));
+}
+.du-action.lit {
+  border-color: var(--c-on);
+  box-shadow: 0 0 0 1px var(--c-on);
 }
 .du-action.empty {
   visibility: hidden;
 }
-.du-action.lit {
-  background: var(--c-value);
-  color: var(--c-screen);
-  font-weight: 600;
-}
 .du-action.command {
-  border-color: var(--c-command);
-  background: color-mix(in srgb, var(--c-command) 35%, black);
-}
-.du-action.command.lit {
-  background: var(--c-command);
-  color: var(--c-label);
+  color: var(--c-command-hi);
 }
 .du-action.disabled {
   color: var(--c-label-dim);
   background: transparent;
   border-color: var(--c-label-faint);
+  box-shadow: none;
 }
 
 /* ---------- Pages ---------- */
@@ -375,13 +480,20 @@ button.softkey:active {
   min-height: 0;
 }
 .lbl {
-  color: var(--c-label-dim);
+  color: var(--c-label);
 }
 .val {
-  color: var(--c-value-hi);
+  color: var(--c-text);
 }
 .val.dim {
-  color: var(--c-value);
+  color: var(--c-label-dim);
+}
+/* Active or normal state (link up, engine firing, step done): the cockpit's green. */
+.on-green {
+  color: var(--c-on);
+}
+.manual {
+  color: var(--c-manual);
 }
 .unit {
   color: var(--c-label-dim);
@@ -447,7 +559,7 @@ button.softkey:active {
   text-align: right;
   font-size: 15px;
   font-weight: 500;
-  color: var(--c-value-hi);
+  color: var(--c-text);
 }
 .traj-cols {
   flex: 1 1 auto;
@@ -644,7 +756,7 @@ button.softkey:active {
   text-anchor: start;
 }
 .prop-svg .p-val {
-  fill: var(--c-value-hi);
+  fill: var(--c-text);
   font-size: 9px;
   text-anchor: start;
 }
@@ -723,8 +835,8 @@ button.softkey:active {
   left: 14px;
   padding: 0 3px;
   font-size: 9px;
-  color: var(--c-label);
-  border: 1px solid var(--c-label-dim);
+  color: var(--c-screen);
+  background: var(--c-label);
 }
 .plate-title {
   position: absolute;
@@ -732,8 +844,9 @@ button.softkey:active {
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 9px;
-  color: var(--c-label);
+  font-size: 9.5px;
+  color: var(--c-text);
+  text-transform: none;
 }
 .plate-switches {
   display: flex;
@@ -754,24 +867,47 @@ button.softkey:active {
 .screw.bl { bottom: 3px; left: 3px; }
 .screw.br { bottom: 3px; right: 3px; }
 
+/* Switch: name above, position labels above and below the lever (On/Off, Arm/Safe), as on Orion's panels. */
 .sw {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  min-width: 68px;
+  gap: 1px;
+  min-width: 50px;
+  padding: 2px 2px;
+  text-transform: none;
+}
+/* Critical switches: framed with yellow and black stripes (the frame is painted on the panel). */
+.sw.hazard {
+  border: 3px solid transparent;
+  border-image: repeating-linear-gradient(-45deg, var(--c-hazard) 0 5px, var(--c-switch-plate) 5px 10px) 3;
 }
 .sw-label {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 9.5px;
-  color: var(--c-label);
+  gap: 4px;
+  font-size: 9px;
+  color: var(--c-text);
   white-space: nowrap;
 }
-.sw-state {
-  font-size: 9px;
+.sw-pos {
+  font-size: 8.5px;
+  line-height: 10px;
   color: var(--c-label-dim);
+}
+.sw-pos.on {
+  color: var(--c-text);
+}
+.sw-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.sw-state {
+  font-size: 8.5px;
+  color: var(--c-label-dim);
+  text-transform: uppercase;
 }
 .led {
   width: 6px;
@@ -788,74 +924,111 @@ button.softkey:active {
   background: var(--c-value-hi);
   box-shadow: 0 0 5px var(--c-value);
 }
+/* Toggle seen from the front: round metal base, ring, stem and knob (the pre-session-30 style, a bit larger). */
 .lever {
   display: block;
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
 }
 .lever-base {
-  fill: var(--c-key-lo);
-  stroke: var(--c-key);
+  fill: var(--c-panel-lo);
+  stroke: var(--c-panel-hi);
   stroke-width: 1.5;
 }
 .lever-ring {
   fill: var(--c-frame);
-  stroke: var(--c-key-lo);
+  stroke: var(--c-panel-lo);
 }
 .lever-stem {
-  fill: var(--c-key);
+  fill: var(--c-panel-hi);
 }
 .lever-knob {
-  fill: var(--c-key-hi);
-  stroke: var(--c-key-lo);
+  fill: var(--c-label);
+  stroke: var(--c-panel-lo);
 }
-.toggle,
-.fire {
+.lever-btn:not(:disabled):hover .lever-knob {
+  fill: var(--c-text);
+}
+.lever-btn {
   padding: 0;
   border: 0;
   background: none;
   cursor: pointer;
 }
-.toggle:hover .lever-knob,
-.fire:not(:disabled):hover .lever-knob {
-  fill: var(--c-label);
+.lever-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
+/*
+ * Guard of the critical switches (the pre-session-30 style): a block with yellow and black
+ * stripes, the red Guard button on top and, while it is down, a translucent red cover over the lever.
+ */
 .guard-frame {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
   padding: 4px;
-  /* Yellow and black guard stripes, as on Orion's cockpit panels. */
   background: repeating-linear-gradient(-45deg, var(--c-hazard) 0 6px, var(--c-switch-plate) 6px 12px);
   border-radius: 2px;
 }
+.guard-frame.armed {
+  box-shadow: 0 0 0 1px var(--c-caution), 0 0 8px var(--c-caution);
+}
 .guard {
-  width: 62px;
+  width: 64px;
   padding: 1px 0;
   border: 1px solid var(--c-switch-plate);
   border-radius: 2px;
   background: var(--c-warning-dim);
-  color: var(--c-label);
+  color: var(--c-text);
   font-size: 9px;
   cursor: pointer;
 }
-.sw.armed .guard {
+.guard.up {
   background: var(--c-warning);
   color: var(--c-screen);
   font-weight: 600;
 }
-.fire {
-  background: var(--c-switch-plate);
+.guard:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.lever-btn.fire {
   border-radius: 50%;
+  background: var(--c-switch-plate);
 }
-.fire:disabled {
-  cursor: default;
-  opacity: 0.45;
+.guard:not(.up) + .lever-btn.fire::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 22px;
+  bottom: 4px;
+  border: 1px solid var(--c-warning);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--c-warning) 38%, transparent);
+  pointer-events: none;
 }
-.sw.disabled .guard {
-  cursor: default;
-  opacity: 0.45;
+.guard:not(.up) + .lever-btn.fire:disabled {
+  opacity: 1;
+}
+.guard:not(.up) + .lever-btn.fire .lever {
+  opacity: 0.55;
+}
+/* Narrower windows: slightly smaller switches so the plates still fit in one row. */
+@media (max-width: 1800px) {
+  .lever {
+    width: 34px;
+    height: 34px;
+  }
+  .guard {
+    width: 52px;
+  }
+  .guard:not(.up) + .lever-btn.fire::after {
+    top: 20px;
+  }
 }
 
 /* ---------- Time and log ---------- */
@@ -1459,32 +1632,6 @@ button.softkey:active {
   }
 }
 
-/* ---------- Switch guard: cover over the toggle ---------- */
-.guard-frame {
-  position: relative;
-}
-.sw.guarded:not(.armed) .fire::after {
-  content: '';
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  top: 22px;
-  bottom: 4px;
-  border: 1px solid var(--c-warning);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--c-warning) 38%, transparent);
-  pointer-events: none;
-}
-.sw.guarded:not(.armed) .fire:disabled {
-  opacity: 1;
-}
-.sw.guarded:not(.armed) .fire .lever {
-  opacity: 0.55;
-}
-.sw.guarded.armed .guard-frame {
-  box-shadow: 0 0 0 1px var(--c-caution), 0 0 8px var(--c-caution);
-}
-
 /* ---------- Start screen ---------- */
 .modal.intro {
   background: color-mix(in srgb, var(--c-screen) 82%, transparent);
@@ -1579,57 +1726,275 @@ button.softkey:active {
   opacity: 0.6;
 }
 
-/* ---------- Flight.PFD ---------- */
+/* ---------- Flt.PFD: three-axis attitude ball (colors from the PFD close-up) ---------- */
 .page.pfd {
   flex-direction: row;
   gap: 8px;
   align-items: stretch;
 }
-.adi {
-  flex: 0 0 42%;
+.pfd-adi {
+  flex: 0 1 56%;
   min-width: 0;
-  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.pfd .rows {
+.adi-head,
+.adi-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.hc {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--c-text);
+}
+.hc-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--c-text);
+}
+.hc-dot.on {
+  background: var(--c-on);
+  border-color: var(--c-on);
+}
+.adi-mode {
+  color: var(--c-text);
+  font-weight: 600;
+}
+.adi-mode.manual {
+  color: var(--c-manual);
+}
+.adi-ref {
+  padding: 0 4px;
+  background: var(--c-softkey-on);
+  border: 1px solid var(--c-softkey-on-hi);
+  color: var(--c-text);
+}
+.adi {
   flex: 1 1 auto;
-  justify-content: center;
+  width: 100%;
+  min-height: 0;
 }
 .adi-sky {
-  fill: var(--c-label);
+  fill: var(--c-adi-sky);
 }
 .adi-ground {
-  fill: var(--c-label-dim);
+  fill: var(--c-adi-ground);
 }
 .adi-line {
-  stroke: var(--c-screen);
-  stroke-width: 1;
+  stroke: var(--c-text);
+  stroke-width: 0.5;
+  stroke-opacity: 0.85;
   fill: none;
 }
-.adi-num {
-  fill: var(--c-screen);
-  font-size: 6.5px;
-  font-family: var(--font-mono);
+.adi-horizon {
+  stroke: var(--c-text);
+  stroke-width: 1.1;
+  fill: none;
 }
 .adi-rim {
   fill: none;
   stroke: var(--c-label-dim);
-  stroke-width: 1.5;
+  stroke-width: 0.8;
 }
 .adi-ship {
   fill: none;
-  stroke: var(--c-value);
-  stroke-width: 2.4;
+  stroke: var(--c-adi-ship);
+  stroke-width: 1.6;
   stroke-linejoin: round;
 }
 .adi-prograde {
   fill: none;
-  stroke: var(--c-value);
-  stroke-width: 1.6;
+  stroke: var(--c-on);
+  stroke-width: 1;
 }
 .adi-command {
-  fill: var(--c-command);
-  stroke: var(--c-screen);
-  stroke-width: 0.5;
+  fill: none;
+  stroke: var(--c-command-hi);
+  stroke-width: 1.2;
+}
+.adi-scale {
+  fill: var(--c-adi-scale);
+}
+.adi-tick {
+  stroke: var(--c-text);
+  stroke-width: 0.6;
+}
+.adi-scale-num {
+  fill: var(--c-text);
+  font-size: 5.8px;
+  font-family: var(--font-mono);
+  text-anchor: middle;
+}
+.adi-box {
+  fill: var(--c-screen);
+  stroke: var(--c-text);
+  stroke-width: 0.6;
+}
+.adi-box-num {
+  fill: var(--c-on);
+  font-size: 7px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  text-anchor: middle;
+}
+.adi-trend {
+  fill: none;
+  stroke: var(--c-rate-bar);
+  stroke-width: 2.4;
+}
+.adi-cmd {
+  fill: var(--c-command-hi);
+}
+.pfd-side {
+  flex: 1 1 44%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: flex-start;
+  overflow: hidden;
+  font-size: 11px;
+}
+/* In a narrow column the label keeps its width and the value gives way (it used to overlap). */
+.pfd-side .row {
+  grid-template-columns: max-content minmax(0, 1fr) 22px;
+}
+.pfd-side .row > :nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Burn identification block (PFD and Flt.Burn). */
+.burn-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.bb-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.bb-id {
+  color: var(--c-text);
+  font-weight: 600;
+}
+.bb-status {
+  color: var(--c-text);
+}
+.bb-status.atped {
+  color: var(--c-status);
+}
+.bb-status.burn {
+  color: var(--c-on);
+}
+.bb-status.done {
+  color: var(--c-label-dim);
+}
+.bb-status.miss {
+  color: var(--c-warning);
+}
+.bb-sys {
+  margin-left: auto;
+  color: var(--c-label-dim);
+  font-size: 10px;
+}
+.burn-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+/* Fault: alarm list with a cursor. */
+.fault-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+}
+.fault-row {
+  display: grid;
+  grid-template-columns: 14px auto minmax(0, 1fr) auto auto;
+  gap: 6px;
+  padding: 1px 4px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.fault-row.cursor {
+  border-color: var(--c-text);
+}
+.fault-row .f-class {
+  font-weight: 600;
+  text-align: center;
+}
+.fault-row.warning .f-class,
+.fault-row.warning .f-text {
+  color: var(--c-warning);
+}
+.fault-row.caution .f-class,
+.fault-row.caution .f-text {
+  color: var(--c-caution);
+}
+.fault-row.acked .f-text {
+  opacity: 0.6;
+}
+.fault-row .f-t,
+.fault-row .f-ack {
+  color: var(--c-label-dim);
+}
+.fault-row .f-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fault-row .f-proc {
+  color: var(--c-status);
+  font-size: 10px;
+}
+/* Sys.Sum: header line and sections separated by thin white lines, as the real summary. */
+.ss-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--c-label);
+}
+.ss-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  min-height: 0;
+  overflow: hidden;
+}
+.ss-grid section {
+  padding: 0 6px 2px;
+  border-right: 1px solid var(--c-label-faint);
+}
+.ss-grid h4 {
+  margin: 1px 0 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--c-text);
+  border-bottom: 1px solid var(--c-label-faint);
+}
+.ss-cell {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.ss-head .ss-cell {
+  flex-direction: column;
+  gap: 0;
+}
+.ss-head .ss-cell .lbl {
+  font-size: 9.5px;
 }
 
 /* ---------- Prop.Sys: vehicle by parts ---------- */
@@ -1669,16 +2034,16 @@ button.softkey:active {
 /* ---------- Flight control plate: DAP, RHC, THC ---------- */
 .fc {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: space-around;
-  gap: 6px 12px;
+  gap: 4px 8px;
   width: 100%;
 }
 .fc-block {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 .fc-row {
   display: flex;
@@ -1700,8 +2065,53 @@ button.softkey:active {
   border-color: var(--c-key);
 }
 .pb.on {
-  background: var(--c-title-bar);
-  border-color: var(--c-value);
+  background: var(--c-softkey-on);
+  border-color: var(--c-on);
+  color: var(--c-on);
+}
+.fc-manual {
+  font-size: 9.5px;
+  padding: 0 5px;
+  color: var(--c-label-faint);
+  border: 1px solid var(--c-label-faint);
+}
+.fc-manual.on {
+  color: var(--c-screen);
+  background: var(--c-manual);
+  border-color: var(--c-manual);
+}
+/* RHC: one row per axis (name and the two deflection buttons). */
+.fc-rhc {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fc-axis {
+  display: grid;
+  grid-template-columns: 46px 22px 22px;
+  align-items: center;
+  gap: 2px;
+}
+.fc .pb {
+  min-width: 0;
+  padding: 3px 5px;
+  font-size: 9.5px;
+}
+.fc-axis .pb {
+  padding: 2px 0;
+}
+.pb.lamp {
+  width: 56px;
+  padding: 2px 0;
+  font-size: 8px;
+}
+.fc-axis-name {
+  font-size: 9.5px;
+  color: var(--c-label);
+  text-transform: none;
+}
+.plate.wide {
+  flex: 2 1 auto;
 }
 .pb.hold:active:not(:disabled) {
   background: var(--c-command);
@@ -1711,8 +2121,16 @@ button.softkey:active {
   opacity: 0.4;
   cursor: default;
 }
+/* One row of plates: each one only as wide as its switches (two rows squeezed the displays). */
+.switch-panel {
+  gap: 6px;
+}
 .plate {
-  flex: 1 1 170px;
+  flex: 1 1 auto;
+  padding: 15px 5px 5px;
+}
+.plate-switches {
+  gap: 2px;
 }
 
 /* ---------- Guided tutorial ---------- */
@@ -2177,4 +2595,30 @@ button.ann.link.acked {
   right: 10px;
   max-width: calc(100% - 440px);
   text-align: right;
+}
+
+/* Switch plates: mixed-case labels, as the real panels ("Pyro Master Arm", "CM/SM Sep"). */
+.plate {
+  text-transform: none;
+}
+
+/* Lamp test: every LED and annunciator lights while the switch is held. */
+.panel.lamp-test .led,
+.panel.lamp-test .hc-dot {
+  background: var(--c-on);
+  border-color: var(--c-on);
+  box-shadow: 0 0 5px var(--c-on);
+}
+.panel.lamp-test .master-alarm .ma-warning {
+  background: var(--c-warning);
+  color: var(--c-screen);
+}
+.panel.lamp-test .master-alarm .ma-caution {
+  background: var(--c-caution);
+  color: var(--c-screen);
+}
+.panel.lamp-test .fc-manual {
+  color: var(--c-screen);
+  background: var(--c-manual);
+  border-color: var(--c-manual);
 }

@@ -1,9 +1,11 @@
 import { evaluateAlarms } from './alarms';
+import { Axes, alignedAxes, axesFrom, fromFrame, lvlh, rotateAxes, rotationBetween } from './attitude';
 import { ATMOSPHERE_TOP, airVelocity } from './atmosphere';
 import { DeltaV, ZERO_DV, burnDirection, dvMagnitude, referenceBody } from './burns';
 import { commsStatus, losClearance, networkForAltitude } from './comms';
 import {
   ATTITUDE_SLEW_RATE,
+  ATTITUDE_TOLERANCE,
   BURN_LEAD_TIME,
   BURN_WINDOW_TOLERANCE,
   CM_SEP_LEAD_TIME,
@@ -24,7 +26,7 @@ import { SimEvent, integrateWithEvents } from './events';
 import { formatDvMs, formatMet, formatNumber } from './format';
 import { tr } from './i18n';
 import { ShipState, integrate } from './integrator';
-import { Vec3, add, angleBetween, cross, distance, length, normalize, rotateAbout, scale, sub } from './math/vec3';
+import { Vec3, add, cross, distance, dot, length, normalize, scale, sub } from './math/vec3';
 import { ASCENT_SEQUENCE, airPathTangent, ascentDirection } from './mission/ascent';
 import { isPostTli } from './mission/phases';
 import { MANEUVER_TITLE, firstIncompleteProcedure, procedureComplete } from './mission/procedures';
@@ -178,24 +180,77 @@ export function cruiseSense(s: SimState): 1 | -1 | 0 {
   return attitudeTargetDv(s) === null ? 1 : 0;
 }
 
+/** Body frame of the spacecraft (X thrust axis, Y pitch axis, Z = X × Y). */
+export function attitudeAxes(s: SimState): Axes {
+  return { x: s.attitude.dir, y: s.attitude.pitchAxis, z: cross(s.attitude.dir, s.attitude.pitchAxis) };
+}
+
+/** LVLH frame relative to the reference body (the Moon inside its sphere of influence, Earth elsewhere). */
+export function lvlhOf(s: SimState): Axes {
+  return lvlh(s.ship.r, s.ship.v, referenceBody(s.ship, s.t, ephemerisOf(s)));
+}
+
+/**
+ * Full commanded frame. In LVLH, the attitude captured when the mode was selected, carried
+ * along with the local frame. Otherwise, the guidance direction with no roll or yaw relative
+ * to LVLH (what the DAP in AUTO flies, and what the PFD shows as the target in INRTL and MAN).
+ */
+export function commandedAxes(s: SimState): Axes {
+  const L = lvlhOf(s);
+  const hold = s.attitude.lvlhHold;
+  if (s.attitude.mode === 'LVLH' && hold) return axesFrom(fromFrame(L, hold.x), fromFrame(L, hold.y));
+  return alignedAxes(commandedDirection(s), L, s.attitude.pitchAxis);
+}
+
+/** Angular velocity commanded by the RHC (inertial frame, rad/s): body rates about Y, Z and X. */
+function rhcRate(s: SimState): Vec3 {
+  const b = attitudeAxes(s);
+  const r = s.attitude.rhc;
+  return scale(add(add(scale(b.y, r.pitch), scale(b.z, r.yaw)), scale(b.x, r.roll)), RHC_RATE);
+}
+
+/**
+ * Body rates (rad/s) the attitude is turning at: roll about X, pitch about Y, yaw about Z.
+ * Kinematic model: the RHC rate in MAN, the slew rate while the DAP reorients, zero otherwise
+ * (the slow turn that tracks the local frame is not shown).
+ */
+export function bodyRates(s: SimState): { roll: number; pitch: number; yaw: number } {
+  const b = attitudeAxes(s);
+  let w: Vec3 = ZERO_VEC;
+  if (s.attitude.mode === 'MAN') w = rhcRate(s);
+  else if (s.attitude.mode !== 'INRTL' && s.phase !== 'ASCENSO' && !s.burn) {
+    const { axis, angle } = rotationBetween(b, commandedAxes(s));
+    if (angle > ATTITUDE_TOLERANCE) w = scale(axis, ATTITUDE_SLEW_RATE);
+  }
+  return { roll: dot(w, b.x), pitch: dot(w, b.y), yaw: dot(w, b.z) };
+}
+
+const ZERO_VEC: Vec3 = { x: 0, y: 0, z: 0 };
+
 /** Advances the attitude `dt` seconds according to the autopilot mode. */
 function updateAttitude(d: Draft, dt: number): void {
   const a = d.attitude;
   if (a.mode === 'INRTL') return;
+  const body = attitudeAxes(d);
   if (a.mode === 'MAN') {
-    if (a.rhc !== 0) d.attitude = { ...a, dir: normalize(rotateAbout(a.dir, Z, a.rhc * RHC_RATE * dt)) };
+    // Constant body rates: the rotation axis is fixed in the body, so one rotation is exact.
+    const w = rhcRate(d);
+    const rate = length(w);
+    if (rate > 0) {
+      const next = rotateAxes(body, scale(w, 1 / rate), rate * dt);
+      d.attitude = { ...a, dir: next.x, pitchAxis: next.y };
+    }
     return;
   }
-  const cmd = commandedDirection(d);
-  const angle = angleBetween(a.dir, cmd);
+  const cmd = commandedAxes(d);
+  const { axis, angle } = rotationBetween(body, cmd);
   const thrusting = d.phase === 'ASCENSO' || d.burn !== null;
   if (thrusting || angle <= ATTITUDE_SLEW_RATE * dt) {
-    if (angle > 1e-9) d.attitude = { ...a, dir: cmd };
+    if (angle > 1e-9) d.attitude = { ...a, dir: cmd.x, pitchAxis: cmd.y };
     return;
   }
-  const n = cross(a.dir, cmd);
-  const axis = length(n) > 1e-9 ? normalize(n) : Z;
-  d.attitude = { ...a, dir: normalize(rotateAbout(a.dir, axis, ATTITUDE_SLEW_RATE * dt)) };
+  const next = rotateAxes(body, axis, ATTITUDE_SLEW_RATE * dt);
+  d.attitude = { ...a, dir: next.x, pitchAxis: next.y };
 }
 
 // ---------- Jettisoned parts ----------
@@ -417,7 +472,8 @@ export function separateIcps(d: Draft): void {
   if (d.burn?.system === 'ICPS') endBurn(d, 'cutoff');
   d.vehicle = { ...d.vehicle, icpsSeparated: true };
   d.record = { ...d.record, icpsSepAt: d.t };
-  d.switches = { ...d.switches, icpsSepArm: false };
+  // The pyro master arm goes back to safe after firing (as the guards used to close on their own).
+  d.switches = { ...d.switches, pyroArm: false };
   spawnDebris(d, 'ICPS', 'ICPS', [-0.6, 0], [-11, 0], 5e-3);
   const p = d.propulsion.prop;
   setProp(d, [p[0], p[1], 0, p[3], p[4]]);
@@ -437,7 +493,7 @@ export function separateCm(d: Draft): void {
   if (d.burn && d.burn.system !== 'ICPS') endBurn(d, 'cutoff');
   d.vehicle = { ...d.vehicle, cmSeparated: true };
   d.record = { ...d.record, cmSepAt: d.t };
-  d.switches = { ...d.switches, cmSepArm: false, mainArm: false, auxArm: false };
+  d.switches = { ...d.switches, pyroArm: false, mainArm: false, auxArm: false };
   d.thc = 0;
   spawnDebris(d, 'SM', 'SM', [-1.2, 0], [-4.3, 0], 1.7e-3);
   const p = d.propulsion.prop;
@@ -686,7 +742,8 @@ function stateTriggers(d: Draft, input: PowerInput | null): void {
  * manual attitude control and the ascent (Max Q).
  */
 function maxChunk(d: Draft): number {
-  if (d.attitude.mode === 'MAN' && d.attitude.rhc !== 0) return 1;
+  const rhc = d.attitude.rhc;
+  if (d.attitude.mode === 'MAN' && (rhc.pitch !== 0 || rhc.yaw !== 0 || rhc.roll !== 0)) return 1;
   if ((d.burn || d.thc !== 0) && d.attitude.mode !== 'AUTO') return 2;
   if (d.phase === 'ASCENSO') return 5;
   if (!isPostTli(d.phase) || d.vehicle.cmSeparated) return Infinity;

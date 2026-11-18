@@ -95,8 +95,11 @@ export interface ActiveBurn {
 export interface Switches {
   readonly mainArm: boolean;
   readonly auxArm: boolean;
-  readonly icpsSepArm: boolean;
-  readonly cmSepArm: boolean;
+  /**
+   * Pyrotechnic master arm, as the "Pyro Master Arm" of Orion's pyro panel: the
+   * separation switches (ICPS SEP, CM/SM SEP) only act with it up.
+   */
+  readonly pyroArm: boolean;
   /** The automatic crew performs the manual steps at their nominal time. */
   readonly autoCrew: boolean;
   /** Automatic pause before each crew action. */
@@ -105,20 +108,34 @@ export interface Switches {
 export type SwitchName = keyof Switches;
 
 /**
- * Digital autopilot (DAP):
+ * Digital autopilot (DAP), with the attitude modes of Orion's PFD (Auto, LVLH, Intl):
  * - AUTO: guidance orients the spacecraft (prograde in cruise, burn attitude during maneuvers).
+ * - LVLH: holds the attitude relative to the local horizon, so it turns with the orbit.
  * - INRTL: holds the current inertial attitude.
- * - MAN: the crew rotates the spacecraft with the rotational hand controller (RHC).
+ * - MAN: the crew rotates the spacecraft with the rotational hand controller (RHC); taking
+ *   the RHC out of detent selects it.
  */
-export type DapMode = 'AUTO' | 'INRTL' | 'MAN';
+export type DapMode = 'AUTO' | 'LVLH' | 'INRTL' | 'MAN';
+
+/** Rotation axes of the hand controller. */
+export type RotAxis = 'pitch' | 'yaw' | 'roll';
 
 export interface Attitude {
-  /** Spacecraft longitudinal axis (unit, inertial frame): where the engines thrust. */
+  /** Body +X axis (unit, inertial frame): where the engines thrust. */
   readonly dir: Vec3;
+  /**
+   * Body +Y axis, the pitch axis (unit, perpendicular to `dir`). With zero roll and yaw
+   * relative to LVLH it points against the orbital angular momentum (−z in the model plane).
+   */
+  readonly pitchAxis: Vec3;
   readonly mode: DapMode;
-  /** Rotational hand controller deflection in pitch: −1, 0 or +1. */
-  readonly rhc: number;
+  /** Rotational hand controller deflection on each axis: −1, 0 or +1. */
+  readonly rhc: Readonly<Record<RotAxis, number>>;
+  /** LVLH mode: body X and Y axes as components in the LVLH frame, captured when it was selected. */
+  readonly lvlhHold: { readonly x: Vec3; readonly y: Vec3 } | null;
 }
+
+export const RHC_CENTERED: Readonly<Record<RotAxis, number>> = { pitch: 0, yaw: 0, roll: 0 };
 
 export interface ProcState {
   readonly activeId: ProcedureId;
@@ -323,14 +340,13 @@ export function createInitialState(params: MissionParams, opts: InitOptions = {}
     ascentEngines: ['RS25'],
     ascentTan: null,
     burn: null,
-    // On the pad the rocket points up.
-    attitude: { dir: vec3(0, 1, 0), mode: 'AUTO', rhc: 0 },
+    // On the pad the rocket points up (pitch 90° in LVLH), with no roll or yaw.
+    attitude: { dir: vec3(0, 1, 0), pitchAxis: vec3(0, 0, -1), mode: 'AUTO', rhc: RHC_CENTERED, lvlhHold: null },
     thc: 0,
     switches: {
       mainArm: false,
       auxArm: false,
-      icpsSepArm: false,
-      cmSepArm: false,
+      pyroArm: false,
       autoCrew: opts.autoCrew ?? false,
       autoPause: true,
     },

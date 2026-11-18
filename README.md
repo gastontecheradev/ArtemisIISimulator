@@ -28,7 +28,7 @@ Open the address shown in the terminal. First you pick the language; then the gu
 1. The countdown (from T‑6 s), the ascent and the two ICPS burns are automatic, as in the real flight.
 2. After that, the display's **Procs** page shows each procedure and its current step, highlighted in magenta.
 3. The simulation pauses on its own before each crew action. With the warp (×1 to ×10000) there is no need to wait.
-4. For a burn: confirm the Δv with the **CONF ΔV** key, raise the engine guard and throw the switch. The engine ignites on its own at the planned instant and shuts down once it has delivered the Δv.
+4. For a burn: confirm the Δv with the **Conf ΔV** key, raise the engine guard and throw the switch (or press **Burn ATP** on the PFD). The engine ignites on its own at the planned instant and shuts down once it has delivered the Δv. Separations need the **PYRO ARM** switch up first.
 5. If you are late, change the Δv, point the spacecraft the wrong way or do not burn, physics decides: you may stay in orbit, miss the Moon, hit it or come back outside the entry corridor.
 
 | Key | Action |
@@ -37,7 +37,9 @@ Open the address shown in the terminal. First you pick the language; then the gu
 | `+` and `−` | Raise and lower the warp |
 | `A` | Acknowledge alarms |
 | `1` to `5` | 3D view camera: automatic, overview, spacecraft, Earth, Moon |
-| `←` and `→` | Rotate the spacecraft (with the autopilot in MAN) |
+| `←` and `→` | Pitch the spacecraft (the autopilot goes to manual) |
+| `Z` and `X` | Yaw |
+| `Q` and `E` | Roll |
 | `↑` and `↓` | Thrust forward or backward with the small thrusters |
 
 The 2D map can be shown in the Earth‑Moon rotating frame (default: Earth and Moon stand still and you can see the free return's "figure 8") or in the inertial frame (the Moon travels along its orbit). It zooms with the mouse wheel or a pinch, pans by dragging, and a double-click brings back the whole mission. The nominal plan is drawn faintly from the start and gets filled in by the actual trail. The flight data (time, speed, distances, temperature and propellant) sit on top of the map. The trail is colored by phase. In the 3D view (which only shows the trail already flown) you pick the camera, an inset shows the Earth vicinity seen from above, and you can watch the boosters, the launch abort tower, each stage and the CubeSats separate.

@@ -28,6 +28,30 @@ export function losClearance(ship: Vec3, earth: Vec3, moon: Vec3): number {
 export const networkForAltitude = (altitude: number): Network =>
   altitude < NSN_MAX_ALTITUDE ? 'NSN' : 'DSN';
 
+/**
+ * Next loss (LOS) and next acquisition (AOS) of signal along a predicted trajectory, by linear
+ * interpolation of the line-of-sight margin between its points. null if there is none.
+ */
+export function nextLinkChanges(
+  points: readonly { readonly t: number; readonly r: Vec3 }[],
+  eph: Ephemeris,
+): { los: number | null; aos: number | null } {
+  let los: number | null = null;
+  let aos: number | null = null;
+  let prev: { t: number; m: number } | null = null;
+  for (const p of points) {
+    const m = losClearance(p.r, eph.earth(p.t).r, eph.moon(p.t).r);
+    if (prev) {
+      const at = prev.t + ((p.t - prev.t) * prev.m) / (prev.m - m);
+      if (prev.m >= 0 && m < 0 && los === null) los = at;
+      if (prev.m < 0 && m >= 0 && aos === null) aos = at;
+    }
+    if (los !== null && aos !== null) break;
+    prev = { t: p.t, m };
+  }
+  return { los, aos };
+}
+
 export function commsStatus(ship: Vec3, t: number, eph: Ephemeris): CommsStatus {
   const earth = eph.earth(t).r;
   const moon = eph.moon(t).r;

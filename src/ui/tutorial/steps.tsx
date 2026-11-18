@@ -73,6 +73,9 @@ const fired = (s: SimState): boolean => ['committed', 'burning', 'done'].include
 const playIfPaused = (s: SimState): string | null => (s.clock.running ? null : 'play');
 /** High warp: ×1000 if it is still low (unless the simulation lowered it on its own for a burn); then, PLAY. */
 const highWarp = (s: SimState): string | null => (s.clock.warp < 100 && s.warpRestore === null ? 'warp-1000' : playIfPaused(s));
+/** The Conf ΔV key if Procs is on screen; if not, the Procs key under a display to open it. */
+const confDv = (): string =>
+  typeof document !== 'undefined' && !document.querySelector('[data-press="conf-dv"]') ? 'tab-procs' : 'conf-dv';
 
 const PARTS: Readonly<Record<Locale, Parts>> = {
   en: [
@@ -129,8 +132,8 @@ const STEPS_EN = (): TourStep[] => [
     title: 'STATUS BAR',
     body: (
       <p>
-        Mission elapsed time (MET) and flight day, the phase, the communications network, the simulation speed and the countdown to the next event. On the right, the{' '}
-        <b>Master Alarm</b>: it lights with every alarm and goes out with a click.
+        Mission elapsed time (MET) and flight day, the phase, the communications network, the simulation speed and the countdown to the next event. Below, the active
+        alarms: the ones with a procedure open it with a click. This bar belongs to the simulator, not to the real cockpit.
       </p>
     ),
   },
@@ -139,8 +142,8 @@ const STEPS_EN = (): TourStep[] => [
     title: 'DISPLAY AND KEYS',
     body: (
       <>
-        <p>Each display shows two pages. The <b>top</b> keys choose the upper page and the <b>bottom</b> keys the lower one. The <b>side</b> keys run the actions of the page.</p>
-        <p><b>TRAJ</b> trajectory · <b>PFD</b> attitude and forces · <b>PROCS</b> procedures · <b>PROP</b> propulsion · <b>COMM</b> communications · <b>TL</b> timeline.</p>
+        <p>Each display shows two pages. The <b>top</b> keys choose the upper page and the <b>bottom</b> keys the lower one; the first key, <b>▲</b>, switches between the flight pages (Flt) and the system pages (Sys). The <b>side</b> keys run the actions of the page: gray boxes are options, green ones are active or actions.</p>
+        <p><b>PFD</b> three-axis attitude · <b>Traj</b> trajectory · <b>Burn</b> next burn · <b>Procs</b> procedures · <b>TL</b> timeline · <b>Sum</b> summary · <b>Fault</b> alarms · <b>Prop</b> propulsion · <b>Comm</b> communications.</p>
       </>
     ),
   },
@@ -149,7 +152,7 @@ const STEPS_EN = (): TourStep[] => [
     title: 'SWITCHES',
     body: (
       <p>
-        Critical switches have a <b>guard</b>. It is always two steps: lift the guard to arm and then actuate the lever. Lowering the guard disarms, and if the engine is firing it cuts it off.
+        The engines have a <b>guard</b>: lift it to arm and then actuate the lever. Lowering the guard disarms, and if the engine is firing it cuts it off. The separations need <b>PYRO ARM</b> up first, the pyro master arm.
       </p>
     ),
   },
@@ -158,8 +161,8 @@ const STEPS_EN = (): TourStep[] => [
     title: 'FLIGHT CONTROL',
     body: (
       <>
-        <p><b>DAP</b> is the autopilot: AUTO orients the spacecraft by itself, INRTL holds the attitude and MAN leaves it to you.</p>
-        <p><b>RHC</b> rotates the spacecraft and <b>THC</b> pushes it forward or backwards with the small thrusters. They act while you hold them.</p>
+        <p><b>DAP</b> is the autopilot: Auto orients the spacecraft by itself, LVLH holds the attitude relative to the local horizon and Intl holds it fixed in space. The <b>Master Alarm</b> lights with every alarm and goes out with a click; <b>Lamp Test</b> lights every lamp while held.</p>
+        <p>The <b>RHC</b> rotates the spacecraft in pitch, yaw and roll (moving it takes the DAP to Manual) and the <b>THC</b> pushes it forward or backwards with the small thrusters. They act while you hold them.</p>
       </>
     ),
   },
@@ -220,16 +223,16 @@ const STEPS_EN = (): TourStep[] => [
   {
     target: 'switches',
     title: 'ARM THE SEPARATION',
-    body: <p>Your first action. Lift the <b>guard</b> of <b>ICPS SEP</b>.</p>,
-    until: (s) => s.switches.icpsSepArm || s.vehicle.icpsSeparated,
-    press: () => 'icps-guard',
+    body: <p>Your first action. Raise <b>PYRO ARM</b>, the pyro master arm.</p>,
+    until: (s) => s.switches.pyroArm || s.vehicle.icpsSeparated,
+    press: () => 'pyro-arm',
   },
   {
     target: 'switches',
     title: 'SEPARATE',
     body: <p>Now actuate the ICPS SEP <b>lever</b>. In the 3D view you will see Orion alone, with its solar arrays deployed.</p>,
     until: (s) => s.vehicle.icpsSeparated,
-    press: (s) => (s.switches.icpsSepArm ? 'icps-lever' : 'icps-guard'),
+    press: (s) => (s.switches.pyroArm ? 'icps-lever' : 'pyro-arm'),
   },
   {
     target: 'time',
@@ -241,9 +244,9 @@ const STEPS_EN = (): TourStep[] => [
   {
     target: 'du',
     title: 'CONFIRM THE ΔV',
-    body: <p>The <b>PROCS</b> page shows procedure E7 with the current step in magenta. Press the <b>CONF ΔV</b> key, at the lower right of that page.</p>,
+    body: <p>The <b>Procs</b> page shows procedure E7 with the current step in magenta. If it is not on screen, open it with the <b>Procs</b> key under a display. Then press the <b>Conf ΔV</b> key, at the lower right of that page.</p>,
     until: (s) => e7(s).confirmed || fired(s),
-    press: () => 'conf-dv',
+    press: confDv,
   },
   {
     target: 'switches',
@@ -270,9 +273,9 @@ const STEPS_EN = (): TourStep[] => [
     title: 'FROM HERE ON, IT IS YOURS',
     body: (
       <>
-        <p>Every burn works the same way: wait for the window, confirm the Δv, lift the guard and actuate. Two remain: <b>E8</b> and the <b>TLI</b>, which sends you to the Moon.</p>
-        <p>Along the way, the <b>CALC</b> key in PROCS computes trajectory corrections. Before entry you have to separate the service module with <b>CM/SM SEP</b>.</p>
-        <p>The PROCS page always tells you what comes next.</p>
+        <p>Every burn works the same way: wait for the window, confirm the Δv, lift the guard and actuate the lever (or press <b>Burn ATP</b> on the PFD). Two remain: <b>E8</b> and the <b>TLI</b>, which sends you to the Moon.</p>
+        <p>Along the way, the <b>Calc</b> key in Procs computes trajectory corrections. Before entry you have to separate the service module with <b>PYRO ARM</b> and <b>CM/SM SEP</b>.</p>
+        <p>The Procs page always tells you what comes next.</p>
       </>
     ),
   },
@@ -295,8 +298,8 @@ const STEPS_ES = (): TourStep[] => [
     title: 'BARRA DE ESTADO',
     body: (
       <p>
-        El tiempo de misión (MET) y el día de vuelo, la fase, la red de comunicaciones, la velocidad de simulación y la cuenta regresiva al próximo evento. A la
-        derecha, el <b>Master Alarm</b>: se enciende con cada alarma y se apaga con un clic.
+        El tiempo de misión (MET) y el día de vuelo, la fase, la red de comunicaciones, la velocidad de simulación y la cuenta regresiva al próximo evento. Debajo, las
+        alarmas activas: las que tienen procedimiento lo abren con un clic. Esta barra es del simulador, no de la cabina real.
       </p>
     ),
   },
@@ -305,8 +308,8 @@ const STEPS_ES = (): TourStep[] => [
     title: 'PANTALLA Y TECLAS',
     body: (
       <>
-        <p>Cada pantalla muestra dos páginas. Las teclas de <b>arriba</b> eligen la página superior y las de <b>abajo</b>, la inferior. Las teclas de los <b>costados</b> ejecutan las acciones de la página.</p>
-        <p><b>TRAJ</b> trayectoria · <b>PFD</b> actitud y fuerzas · <b>PROCS</b> procedimientos · <b>PROP</b> propulsión · <b>COMM</b> comunicaciones · <b>TL</b> línea de tiempo.</p>
+        <p>Cada pantalla muestra dos páginas. Las teclas de <b>arriba</b> eligen la página superior y las de <b>abajo</b>, la inferior; la primera, <b>▲</b>, alterna entre las páginas de vuelo (Flt) y las de sistemas (Sys). Las teclas de los <b>costados</b> ejecutan las acciones de la página: las cajas grises son opciones y las verdes, opciones activas o acciones.</p>
+        <p><b>PFD</b> actitud en tres ejes · <b>Traj</b> trayectoria · <b>Burn</b> próximo encendido · <b>Procs</b> procedimientos · <b>TL</b> línea de tiempo · <b>Sum</b> resumen · <b>Fault</b> alarmas · <b>Prop</b> propulsión · <b>Comm</b> comunicaciones.</p>
       </>
     ),
   },
@@ -315,8 +318,8 @@ const STEPS_ES = (): TourStep[] => [
     title: 'INTERRUPTORES',
     body: (
       <p>
-        Los interruptores críticos tienen una <b>guarda</b>. Siempre son dos pasos: levantar la guarda para armar y después accionar la palanca.
-        Bajar la guarda desarma, y si el motor está encendido lo corta.
+        Los motores tienen una <b>guarda</b>: se levanta para armar y después se acciona la palanca. Bajar la guarda desarma, y si el motor está encendido lo corta.
+        Las separaciones piden antes <b>PYRO ARM</b> arriba, el armado maestro de la pirotecnia.
       </p>
     ),
   },
@@ -325,8 +328,8 @@ const STEPS_ES = (): TourStep[] => [
     title: 'CONTROL DE VUELO',
     body: (
       <>
-        <p><b>DAP</b> es el piloto automático: en AUTO orienta la nave solo, en INRTL mantiene la actitud y en MAN te la deja a vos.</p>
-        <p><b>RHC</b> rota la nave y <b>THC</b> la empuja hacia adelante o atrás con los propulsores chicos. Actúan mientras mantenés apretado.</p>
+        <p><b>DAP</b> es el piloto automático: en Auto orienta la nave solo, en LVLH mantiene la actitud respecto del horizonte local y en Intl la deja fija en el espacio. El <b>Master Alarm</b> se enciende con cada alarma y se apaga con un clic; <b>Lamp Test</b> enciende todas las luces mientras se mantiene.</p>
+        <p>El <b>RHC</b> rota la nave en cabeceo, guiñada y alabeo (al moverlo el DAP pasa a Manual) y el <b>THC</b> la empuja hacia adelante o atrás con los propulsores chicos. Actúan mientras mantenés apretado.</p>
       </>
     ),
   },
@@ -387,16 +390,16 @@ const STEPS_ES = (): TourStep[] => [
   {
     target: 'switches',
     title: 'ARMAR LA SEPARACIÓN',
-    body: <p>Tu primera acción. Levantá la <b>guarda</b> de <b>ICPS SEP</b>.</p>,
-    until: (s) => s.switches.icpsSepArm || s.vehicle.icpsSeparated,
-    press: () => 'icps-guard',
+    body: <p>Tu primera acción. Subí <b>PYRO ARM</b>, el armado maestro de la pirotecnia.</p>,
+    until: (s) => s.switches.pyroArm || s.vehicle.icpsSeparated,
+    press: () => 'pyro-arm',
   },
   {
     target: 'switches',
     title: 'SEPARAR',
     body: <p>Ahora accioná la <b>palanca</b> de ICPS SEP. En la vista 3D vas a ver a Orion sola, con los paneles solares desplegados.</p>,
     until: (s) => s.vehicle.icpsSeparated,
-    press: (s) => (s.switches.icpsSepArm ? 'icps-lever' : 'icps-guard'),
+    press: (s) => (s.switches.pyroArm ? 'icps-lever' : 'pyro-arm'),
   },
   {
     target: 'time',
@@ -408,9 +411,9 @@ const STEPS_ES = (): TourStep[] => [
   {
     target: 'du',
     title: 'CONFIRMAR EL ΔV',
-    body: <p>En la página <b>PROCS</b> está el procedimiento E7 con el paso actual en magenta. Apretá la tecla <b>CONF ΔV</b>, abajo a la derecha de esa página.</p>,
+    body: <p>En la página <b>Procs</b> está el procedimiento E7 con el paso actual en magenta. Si no está a la vista, abrila con la tecla <b>Procs</b> debajo de una pantalla. Después apretá la tecla <b>Conf ΔV</b>, abajo a la derecha de esa página.</p>,
     until: (s) => e7(s).confirmed || fired(s),
-    press: () => 'conf-dv',
+    press: confDv,
   },
   {
     target: 'switches',
@@ -437,9 +440,9 @@ const STEPS_ES = (): TourStep[] => [
     title: 'A PARTIR DE ACÁ, SEGUÍS VOS',
     body: (
       <>
-        <p>Todos los encendidos son iguales: esperar la ventana, confirmar el Δv, levantar la guarda y accionar. Quedan dos: <b>E8</b> y el <b>TLI</b>, que te manda a la Luna.</p>
-        <p>En el camino, la tecla <b>CALC</b> de PROCS calcula correcciones de trayectoria. Antes de la entrada hay que separar el módulo de servicio con <b>CM/SM SEP</b>.</p>
-        <p>La página PROCS siempre dice qué sigue.</p>
+        <p>Todos los encendidos son iguales: esperar la ventana, confirmar el Δv, levantar la guarda y accionar la palanca (o apretar <b>Burn ATP</b> en la PFD). Quedan dos: <b>E8</b> y el <b>TLI</b>, que te manda a la Luna.</p>
+        <p>En el camino, la tecla <b>Calc</b> de Procs calcula correcciones de trayectoria. Antes de la entrada hay que separar el módulo de servicio con <b>PYRO ARM</b> y <b>CM/SM SEP</b>.</p>
+        <p>La página Procs siempre dice qué sigue.</p>
       </>
     ),
   },
