@@ -99,7 +99,7 @@ export function procedureView(s: SimState, id: ProcedureId): ProcedureView {
       optional: false,
       steps: [
         { key: 'wait', text: tr('proc.waitIcps', { met: formatMet(MET_E6_PROX_OPS_START) }), kind: 'AUTO', done: s.t >= MET_E6_PROX_OPS_START || sep },
-        { key: 'arm', text: tr('proc.armIcps'), kind: 'CREW', done: s.switches.icpsSepArm || sep },
+        { key: 'arm', text: tr('proc.armPyro'), kind: 'CREW', done: s.switches.pyroArm || sep },
         { key: 'fire', text: tr('proc.fireIcps'), kind: 'CREW', done: sep },
         { key: 'demo', text: tr('proc.proxDemo', { met: formatMet(MET_E6_PROX_OPS_END) }), kind: 'AUTO', done: sep && s.t >= MET_E6_PROX_OPS_END },
       ],
@@ -115,7 +115,7 @@ export function procedureView(s: SimState, id: ProcedureId): ProcedureView {
       optional: false,
       steps: [
         { key: 'wait', text: tr('proc.waitReturn', { min: formatNumber(CM_SEP_PROMPT_LEAD_TIME / 60) }), kind: 'AUTO', done: near || sep },
-        { key: 'arm', text: tr('proc.armCm'), kind: 'CREW', done: s.switches.cmSepArm || sep },
+        { key: 'arm', text: tr('proc.armPyro'), kind: 'CREW', done: s.switches.pyroArm || sep },
         { key: 'fire', text: tr('proc.fireCm'), kind: 'CREW', done: sep },
       ],
     };

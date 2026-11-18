@@ -1,4 +1,5 @@
-import { Draft, advance, endBurn, executeManeuver, logTo, produce, separateCm, separateIcps, setManeuver } from './advance';
+import { Draft, advance, endBurn, executeManeuver, logTo, lvlhOf, produce, separateCm, separateIcps, setManeuver } from './advance';
+import { toFrame } from './attitude';
 import { dvMagnitude } from './burns';
 import { BURN_LEAD_TIME, WARP_LEVELS } from './constants';
 import { formatDvMs, formatMet } from './format';
@@ -14,7 +15,7 @@ import {
   procedureView,
 } from './mission/procedures';
 import { burnBlocker } from './propulsion';
-import { DapMode, InitOptions, ProcedureId, SimState, SwitchName, createInitialState } from './state';
+import { DapMode, InitOptions, ProcedureId, RHC_CENTERED, RotAxis, SimState, SwitchName, createInitialState } from './state';
 
 /**
  * Command API: everything the UI can do to the simulation goes through here.
@@ -45,6 +46,12 @@ export const reset = (params: MissionParams, opts: InitOptions = {}): SimState =
 export function ackAlarms(s: SimState): SimState {
   if (s.alarms.every((a) => a.acked)) return s;
   return { ...s, alarms: s.alarms.map((a) => (a.acked ? a : { ...a, acked: true })) };
+}
+
+/** Acknowledges one alarm (the Ack key of the Fault page). */
+export function ackAlarm(s: SimState, id: string): SimState {
+  if (!s.alarms.some((a) => a.id === id && !a.acked)) return s;
+  return { ...s, alarms: s.alarms.map((a) => (a.id === id ? { ...a, acked: true } : a)) };
 }
 
 /** Actuates a switch. Lowering an engine's guard disarms it and uncommits the burn. */
@@ -110,15 +117,30 @@ export function fireEngine(s: SimState, system: 'MAIN' | 'AUX'): SimState {
   });
 }
 
-export function fireIcpsSeparation(s: SimState): SimState {
-  if (s.outcome || !s.switches.icpsSepArm || s.vehicle.icpsSeparated) return s;
-  return produce(s, separateIcps);
+/**
+ * Burn ATP (authority to proceed), the key of Orion's PFD: commits the burn loaded in Procs,
+ * the same as actuating the engine lever. It also needs the engine guard raised.
+ */
+export function burnAtp(s: SimState): SimState {
+  const id = activeManeuverId(s);
+  if (!id) return s;
+  const system = s.maneuvers[id].system;
+  if (system !== 'MAIN' && system !== 'AUX') return s;
+  const armed = system === 'MAIN' ? s.switches.mainArm : s.switches.auxArm;
+  if (!armed) return produce(s, (d) => logTo(d, 'INFO', tr('cmd.atpNotArmed', { id, sw: SYSTEM_SWITCH[system] })));
+  return fireEngine(s, system);
 }
 
-export function fireCmSeparation(s: SimState): SimState {
-  if (s.outcome || !s.switches.cmSepArm || s.vehicle.cmSeparated) return s;
-  return produce(s, separateCm);
+/** Separation switches: they only act with the pyro master arm up (otherwise they log why). */
+function firePyro(s: SimState, done: boolean, separate: (d: Draft) => void): SimState {
+  if (s.outcome || done) return s;
+  if (!s.switches.pyroArm) return produce(s, (d) => logTo(d, 'INFO', tr('cmd.pyroSafe')));
+  return produce(s, separate);
 }
+
+export const fireIcpsSeparation = (s: SimState): SimState => firePyro(s, s.vehicle.icpsSeparated, separateIcps);
+
+export const fireCmSeparation = (s: SimState): SimState => firePyro(s, s.vehicle.cmSeparated, separateCm);
 
 // --- Procs ---
 
@@ -202,7 +224,10 @@ export function computeCorrection(s: SimState): SimState {
 
 // --- Attitude and hand controllers ---
 
-/** Changes the digital autopilot (DAP) mode. During the ascent the rocket guidance is in control. */
+/**
+ * Changes the digital autopilot (DAP) mode. During the ascent the rocket guidance is in control.
+ * LVLH captures the current attitude relative to the local frame and holds it from then on.
+ */
 export function setDapMode(s: SimState, mode: DapMode): SimState {
   if (s.outcome || s.attitude.mode === mode) return s;
   return produce(s, (d) => {
@@ -210,16 +235,31 @@ export function setDapMode(s: SimState, mode: DapMode): SimState {
       logTo(d, 'INFO', tr('cmd.dapAscent'));
       return;
     }
-    d.attitude = { ...d.attitude, mode, rhc: 0 };
+    let lvlhHold = null;
+    if (mode === 'LVLH') {
+      const L = lvlhOf(d);
+      lvlhHold = { x: toFrame(L, d.attitude.dir), y: toFrame(L, d.attitude.pitchAxis) };
+    }
+    d.attitude = { ...d.attitude, mode, rhc: RHC_CENTERED, lvlhHold };
     logTo(d, 'INFO', tr('cmd.dapMode', { mode }));
   });
 }
 
-/** Rotational hand controller (RHC), pitch axis: −1, 0 or +1. Only acts with the DAP in MAN. */
-export function setRhc(s: SimState, value: number): SimState {
+/**
+ * Rotational hand controller (RHC) on one axis: −1, 0 or +1 (pitch +1 = nose up, yaw +1 =
+ * nose right, roll +1 = right). Taking it out of detent switches the DAP to MAN
+ * (ASSUMPTION: how Orion's DAP reacts to the RHC is not published). It does nothing during
+ * the ascent, when the rocket guidance is in control.
+ */
+export function setRhc(s: SimState, axis: RotAxis, value: number): SimState {
   const v = Math.sign(value);
-  if (s.outcome || s.attitude.rhc === v || s.attitude.mode !== 'MAN') return s;
-  return { ...s, attitude: { ...s.attitude, rhc: v } };
+  if (s.outcome || s.phase === 'ASCENSO' || s.attitude.rhc[axis] === v) return s;
+  const rhc = { ...s.attitude.rhc, [axis]: v };
+  if (v === 0 || s.attitude.mode === 'MAN') return { ...s, attitude: { ...s.attitude, rhc } };
+  return produce(s, (d) => {
+    d.attitude = { ...d.attitude, mode: 'MAN', rhc, lvlhHold: null };
+    logTo(d, 'INFO', tr('cmd.rhcManual'));
+  });
 }
 
 /**

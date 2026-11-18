@@ -1,29 +1,23 @@
-import { ackAlarms, selectProcedure } from '../../sim/commands';
+import { selectProcedure } from '../../sim/commands';
 import { formatDuration, formatMet } from '../../sim/format';
 import { phaseLabel } from '../../sim/mission/phases';
 import { nextEvent } from '../../sim/mission/timeline';
-import { ProcedureId, SimState } from '../../sim/state';
+import { SimState } from '../../sim/state';
 import { useT } from '../i18n';
 import { act } from '../store';
-
-/** Procedure that handles each alarm, if there is one. */
-function procedureFor(alarmId: string, s: SimState): ProcedureId | null {
-  if (alarmId.startsWith('missed:')) return alarmId.slice(7) as ProcedureId;
-  if (alarmId === 'cm-sep') return 'SEP_CM';
-  if (alarmId === 'corridor') return s.phase === 'TRANSITO_IDA' ? 'E10' : 'E12';
-  if (alarmId === 'no-return' || alarmId === 'reentry' || alarmId === 'moon-impact') return 'MAN';
-  return null;
-}
+import { procedureFor } from './faults';
 
 /** Flight day (FD01 on launch day), as in NASA's timeline. */
 const flightDay = (t: number): number => Math.max(1, Math.floor(t / 86400) + 1);
 
-/** Status bar: MET, phase, COMM, simulation speed, next event and Master Alarm. */
+/**
+ * Status bar (a simulator element, not part of the real cockpit): MET, phase, COMM, simulation
+ * speed, next event and the active alarms. The Master Alarm is on the flight control plate,
+ * as on Orion's center panel.
+ */
 export function StatusBar({ s }: { s: SimState }): JSX.Element {
   const t = useT();
   const comm = s.comms.los ? 'LOS' : s.comms.network;
-  const pending = s.alarms.filter((a) => !a.acked);
-  const level = pending.some((a) => a.level === 'WARNING') ? 'warning' : pending.length > 0 ? 'caution' : 'off';
   const run = s.outcome ? t('st.run.end') : s.clock.running ? t('st.run.run') : t('st.run.pause');
   const next = nextEvent(s);
   return (
@@ -55,10 +49,6 @@ export function StatusBar({ s }: { s: SimState }): JSX.Element {
             <span className="st-value cmd">T−{formatDuration(next.t - s.t)}</span>
           </div>
         )}
-        <button className={`master-alarm ${level}`} onClick={() => act(ackAlarms)} title={t('st.masterAlarm')} aria-label="Master Alarm">
-          <span className="ma-warning">WARNING</span>
-          <span className="ma-caution">CAUTION</span>
-        </button>
       </div>
       {s.alarms.length > 0 && (
         <div className="annunciator">

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { fly, flyFrom, withBurn } from '../scripts/lib/calibration';
-import { advance, cruiseSense, executeManeuver, powerInputOf, produce, setManeuver } from '../src/sim/advance';
+import { advance, attitudeAxes, bodyRates, cruiseSense, executeManeuver, lvlhOf, powerInputOf, produce, setManeuver } from '../src/sim/advance';
+import { eulerOf } from '../src/sim/attitude';
+import { nextLinkChanges } from '../src/sim/comms';
 import { airVelocity } from '../src/sim/atmosphere';
 import { dvMagnitude } from '../src/sim/burns';
 import * as cmd from '../src/sim/commands';
@@ -24,6 +26,7 @@ import {
   POST_ARB_ORBIT,
   POST_PRM_ORBIT,
   PUBLISHED_MET,
+  RHC_RATE,
   R_EARTH,
   TLI_HALF_BURN,
 } from '../src/sim/constants';
@@ -65,12 +68,14 @@ function followProcedures(s: SimState): SimState {
   if (!procedureView(s, s.proc.activeId).steps[0].done) return s;
   switch (s.proc.activeId) {
     case 'SEP_ICPS':
-      return cmd.fireIcpsSeparation(cmd.setSwitch(s, 'icpsSepArm', true));
+      return cmd.fireIcpsSeparation(cmd.setSwitch(s, 'pyroArm', true));
     case 'SEP_CM':
-      return cmd.fireCmSeparation(cmd.setSwitch(s, 'cmSepArm', true));
+      return cmd.fireCmSeparation(cmd.setSwitch(s, 'pyroArm', true));
     case 'E7':
       return cmd.fireEngine(cmd.confirmDv(cmd.setSwitch(s, 'auxArm', true)), 'AUX');
     case 'E8':
+      // E8 is committed with the PFD's Burn ATP key instead of the lever.
+      return cmd.burnAtp(cmd.confirmDv(cmd.setSwitch(s, 'mainArm', true)));
     case 'E9':
       return cmd.fireEngine(cmd.confirmDv(cmd.setSwitch(s, 'mainArm', true)), 'MAIN');
     default:
@@ -346,6 +351,12 @@ describe('H8 · la misión se vuela desde el panel', () => {
     expect(p.perilune!.altitude).toBeCloseTo(FLYBY_ALTITUDE_TARGET, -1);
     expect(p.ei!.fpaDeg).toBeCloseTo(ENTRY_CORRIDOR.target, 1);
     expect(s.alarms).toEqual([]);
+    // The predicted loss of signal brackets the flyby (Sys.Sum shows these times).
+    const link = nextLinkChanges(p.points, ephemerisOf(s));
+    expect(link.los).not.toBeNull();
+    expect(link.los!).toBeLessThan(p.perilune!.t);
+    expect(link.aos!).toBeGreaterThan(p.perilune!.t);
+    expect(link.aos! - link.los!).toBeLessThan(2 * 3600);
   });
 
   it('sin acción de la tripulación en el TLI: ventana perdida y la nave queda en órbita', () => {
@@ -429,12 +440,70 @@ describe('actitud y controladores manuales', () => {
     const eph = ephemerisOf(base);
     const prograde = normalize(sub(base.ship.v, eph.earth(base.t).v));
     expect(angleBetween(base.attitude.dir, prograde)).toBeLessThan(0.02);
-    let s = cmd.setRhc(cmd.setDapMode(base, 'MAN'), 1);
+    let s = cmd.setRhc(cmd.setDapMode(base, 'MAN'), 'pitch', 1);
     s = flyFrom(s, base.t + 30);
     // 3°/s for 30 s = 90°.
     expect(angleBetween(s.attitude.dir, base.attitude.dir)).toBeCloseTo(Math.PI / 2, 2);
-    s = flyFrom(cmd.setRhc(s, 0), s.t + 30);
+    s = flyFrom(cmd.setRhc(s, 'pitch', 0), s.t + 30);
     expect(angleBetween(s.attitude.dir, base.attitude.dir)).toBeCloseTo(Math.PI / 2, 2);
+  });
+
+  it('en crucero nominal la actitud no tiene alabeo ni guiñada respecto de LVLH', () => {
+    const e = eulerOf(attitudeAxes(base), lvlhOf(base));
+    expect(Math.abs(e.yaw)).toBeLessThan(1e-6);
+    expect(Math.abs(e.roll)).toBeLessThan(1e-6);
+    // Prograde: the pitch is the flight-path angle.
+    expect(Math.abs(e.pitch * (180 / Math.PI) - elements(base).fpaDeg)).toBeLessThan(1);
+  });
+
+  it('mover el RHC con el DAP en AUTO lo pasa a MAN', () => {
+    const s = cmd.setRhc(base, 'roll', 1);
+    expect(s.attitude.mode).toBe('MAN');
+    expect(s.log[s.log.length - 1].text).toContain('RHC');
+    // The PFD shows the commanded body rate on that axis only.
+    const w = bodyRates(s);
+    expect(w.roll).toBeCloseTo(RHC_RATE, 12);
+    expect(Math.abs(w.pitch) + Math.abs(w.yaw)).toBeLessThan(1e-12);
+    // During the ascent the rocket guidance keeps control.
+    expect(cmd.setRhc(flyFrom(launch(), 60), 'pitch', 1).attitude.mode).toBe('AUTO');
+  });
+
+  it('el alabeo gira la nave sobre su eje sin cambiar hacia dónde empuja', () => {
+    const s = flyFrom(cmd.setRhc(base, 'roll', 1), base.t + 30);
+    // 90° of roll: the thrust axis stays, the pitch axis turns 90°.
+    expect(angleBetween(s.attitude.dir, base.attitude.dir)).toBeLessThan(1e-6);
+    expect(angleBetween(s.attitude.pitchAxis, base.attitude.pitchAxis)).toBeCloseTo(Math.PI / 2, 3);
+    expect(eulerOf(attitudeAxes(s), lvlhOf(s)).roll).toBeCloseTo(Math.PI / 2, 2);
+  });
+
+  it('con guiñada el empuje sale del plano de la órbita lunar', () => {
+    // 30° of yaw (10 s at 3°/s), then the THC pushes along the spacecraft axis.
+    let s = flyFrom(cmd.setRhc(base, 'yaw', 1), base.t + 10);
+    s = cmd.setRhc(s, 'yaw', 0);
+    expect(Math.abs(s.attitude.dir.z)).toBeCloseTo(Math.sin(Math.PI / 6), 2);
+    const coast = flyFrom(s, s.t + 100);
+    const pushed = flyFrom(cmd.setThc(s, 1), s.t + 100);
+    const dv = sub(pushed.ship.v, coast.ship.v);
+    expect(Math.abs(dv.z) / length(dv)).toBeCloseTo(Math.sin(Math.PI / 6), 2);
+    expect(Math.abs(pushed.ship.r.z)).toBeGreaterThan(Math.abs(coast.ship.r.z));
+  });
+
+  it('LVLH mantiene el ángulo respecto del horizonte local; INRTL, la actitud inercial', () => {
+    const tilted = cmd.setRhc(flyFrom(cmd.setRhc(base, 'pitch', 1), base.t + 10), 'pitch', 0);
+    const pitch0 = eulerOf(attitudeAxes(tilted), lvlhOf(tilted)).pitch;
+    // 30 min, well before the E7 window.
+    const lv = flyFrom(cmd.setDapMode(tilted, 'LVLH'), tilted.t + 1800);
+    const inr = flyFrom(cmd.setDapMode(tilted, 'INRTL'), tilted.t + 1800);
+    expect(eulerOf(attitudeAxes(lv), lvlhOf(lv)).pitch).toBeCloseTo(pitch0, 3);
+    expect(angleBetween(inr.attitude.dir, tilted.attitude.dir)).toBeLessThan(1e-9);
+    // In half an hour the local horizon turns: holding it is not the same as holding inertially.
+    expect(angleBetween(lv.attitude.dir, inr.attitude.dir)).toBeGreaterThan(0.05);
+  });
+
+  it('las separaciones solo actúan con PYRO ARM arriba', () => {
+    const early = createInitialState(P, { headless: true });
+    expect(cmd.fireIcpsSeparation(early).vehicle.icpsSeparated).toBe(false);
+    expect(cmd.fireIcpsSeparation(cmd.setSwitch(early, 'pyroArm', true)).vehicle.icpsSeparated).toBe(true);
   });
 
   it('el THC empuja con el RCS sobre el eje de la nave y gasta propelente', () => {
@@ -451,8 +520,8 @@ describe('actitud y controladores manuales', () => {
 
   it('un encendido con la nave mal orientada empuja para donde apunta la nave', () => {
     // Spacecraft turned 180° with a fixed attitude: the "prograde" E7 burn slows down instead of speeding up.
-    let s = flyFrom(cmd.setRhc(cmd.setDapMode(base, 'MAN'), 1), base.t + 60);
-    s = cmd.setDapMode(cmd.setRhc(s, 0), 'INRTL');
+    let s = flyFrom(cmd.setRhc(cmd.setDapMode(base, 'MAN'), 'pitch', 1), base.t + 60);
+    s = cmd.setDapMode(cmd.setRhc(s, 'pitch', 0), 'INRTL');
     const good = fly(P, P.burns.E7.met + E7_BURN_DURATION + 10);
     const wrong = flyFrom(s, P.burns.E7.met + E7_BURN_DURATION + 10);
     expect(wrong.maneuvers.E7.status).toBe('done');

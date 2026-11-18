@@ -13,8 +13,9 @@ import { EventLog } from './panel/EventLog';
 import { StatusBar } from './panel/StatusBar';
 import { SwitchPanel } from './panel/SwitchPanel';
 import { TimeControls } from './panel/TimeControls';
+import { RotAxis } from '../sim/state';
 import { useT } from './i18n';
-import { act, setCamera, setGuide, setTour, useGuide, useIntro, useSim, useTour } from './store';
+import { act, setCamera, setGuide, setTour, useGuide, useIntro, usePanelUi, useSim, useTour } from './store';
 import { Tour } from './tutorial/Tour';
 
 /** Minimum panel widths to show two or three Display Units (the real cockpit has three). */
@@ -29,10 +30,19 @@ function useKeyboard(enabled: boolean): void {
       const target = e.target as HTMLElement | null;
       return e.ctrlKey || e.metaKey || e.altKey || !!(target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
     };
-    // Arrows: hand controllers, active while the key is held down.
+    // Hand controllers, active while the key is held down. ← → pitch (on the map, ← turns the
+    // spacecraft counterclockwise, as before the three-axis attitude), Z X yaw, Q E roll; ↑ ↓ THC.
+    const RHC_KEYS: Readonly<Record<string, [RotAxis, number]>> = {
+      ArrowLeft: ['pitch', -1],
+      ArrowRight: ['pitch', 1],
+      z: ['yaw', -1],
+      x: ['yaw', 1],
+      q: ['roll', -1],
+      e: ['roll', 1],
+    };
     const hold = (e: KeyboardEvent, on: boolean): boolean => {
-      if (e.key === 'ArrowLeft') act((s) => setRhc(s, on ? 1 : 0));
-      else if (e.key === 'ArrowRight') act((s) => setRhc(s, on ? -1 : 0));
+      const rhc = RHC_KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+      if (rhc) act((s) => setRhc(s, rhc[0], on ? rhc[1] : 0));
       else if (e.key === 'ArrowUp') act((s) => setThc(s, on ? 1 : 0));
       else if (e.key === 'ArrowDown') act((s) => setThc(s, on ? -1 : 0));
       else return false;
@@ -75,6 +85,7 @@ export function App(): JSX.Element {
   const intro = useIntro();
   const tour = useTour();
   const guide = useGuide();
+  const lampTest = usePanelUi().lampTest;
   const panelRef = useRef<HTMLElement>(null);
   const [units, setUnits] = useState(1);
   const [credits, setCredits] = useState(false);
@@ -92,12 +103,13 @@ export function App(): JSX.Element {
 
   return (
     <div className="app">
-      <aside className="panel" ref={panelRef}>
+      <aside className={lampTest ? 'panel lamp-test' : 'panel'} ref={panelRef}>
         <StatusBar s={s} />
         <div className="du-row">
-          <DisplayUnit s={s} initial={['TRAJ', 'PROCS']} />
-          {units >= 2 && <DisplayUnit s={s} initial={['PFD', 'PROP']} />}
-          {units >= 3 && <DisplayUnit s={s} initial={['TL', 'COMM']} />}
+          {/* Alone: PFD and Procs. With two displays (Gastón's layout): Traj/TL on the left and PFD/Prop on the right. */}
+          <DisplayUnit key={units >= 2 ? 'du0-wide' : 'du0'} s={s} index={0} initial={units >= 2 ? ['TRAJ', 'TL'] : ['PFD', 'PROCS']} />
+          {units >= 2 && <DisplayUnit s={s} index={1} initial={['PFD', 'PROP']} />}
+          {units >= 3 && <DisplayUnit s={s} index={2} initial={['SUM', 'FAULT']} />}
         </div>
         <SwitchPanel s={s} />
         <div className="bottom-row">

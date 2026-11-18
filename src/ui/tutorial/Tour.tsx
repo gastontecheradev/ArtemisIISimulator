@@ -74,7 +74,9 @@ export function Tour({ s, index }: { s: SimState; index: number }): JSX.Element 
     const measure = (): void => {
       const next = boxOf(step?.target ? `[data-tour="${step.target}"]` : null);
       setTarget((prev) => (sameBox(prev, next) ? prev : next));
-      const hand = boxOf(pressId ? `[data-press="${pressId}"]` : null);
+      // Re-evaluated on every measure: some steps depend on what the displays show (opening Procs).
+      const id = pressId && step?.press ? step.press(s) : null;
+      const hand = boxOf(id ? `[data-press="${id}"]` : null);
       setPress((prev) => (sameBox(prev, hand) ? prev : hand));
     };
     measure();

@@ -262,7 +262,7 @@ function power(l: Locale): GuideContent {
           L(
             l,
             'The simulator does not model the electrical system: no battery charge, no eclipse accounting and no power page. The numbers above are NASA’s published figures, shown here for context only. The one energy-related readout on the panel is the skin temperature, a simplified radiative estimate.',
-            'El simulador no modela el sistema eléctrico: no hay carga de baterías, ni contabilidad de eclipses, ni página de energía. Los números de arriba son los publicados por NASA y están solo como contexto. El único dato relacionado con energía en el panel es la temperatura de la piel, una estimación radiativa simplificada.',
+            'El simulador no modela el sistema eléctrico: no hay carga de baterías, ni contabilidad de eclipses, ni página de energía. Los números de arriba son los publicados por NASA y están solo como contexto. El único dato relacionado con energía en el panel es la temperatura de superficie, una estimación radiativa simplificada.',
           ),
         ],
         note: L(l, `Sources: ${SRC_A2}; ${SRC_TL}.`, `Fuentes: ${SRC_A2}; ${SRC_TL}.`),

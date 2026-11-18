@@ -3,7 +3,7 @@ import { cruiseSense, runningEngines } from '../sim/advance';
 import { sunDirection } from '../sim/bodies';
 import { EARTH_ROTATION_IN_PLANE, MOON_SOI, R_EARTH, R_MOON } from '../sim/constants';
 import { getLocale } from '../sim/i18n';
-import { Vec3, ZERO, add, angleBetween, cross, length, normalize, rotateAbout, rotateZ, scale, sub } from '../sim/math/vec3';
+import { Vec3, ZERO, add, angleBetween, cross, dot, length, normalize, rotateAbout, rotateZ, scale, sub } from '../sim/math/vec3';
 import nominalRaw from '../sim/mission/nominal-path.json';
 import { MissionParams } from '../sim/mission/params';
 import { timeline } from '../sim/mission/timeline';
@@ -214,8 +214,11 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     moon: cssVar(container, '--c-body-moon'),
     orbit: cssVar(container, '--c-label'),
     ei: cssVar(container, '--c-caution'),
-  }, isMap);
+  }, isMap, is3d ? { size: '4k', anisotropy: renderer.capabilities.getMaxAnisotropy(), detail: true } : null);
   bodies.setLit(is3d);
+  // The entry interface ring stays on the map and the inset (where it reads as a
+  // reference); in 3D it is hidden: next to the textured Earth it looked like the equator.
+  bodies.eiRing.visible = !is3d;
   const trails = createTrails({
     out: cssVar(container, '--c-trail-out'),
     ret: cssVar(container, '--c-trail-return'),
@@ -277,10 +280,14 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   const vy = new THREE.Vector3();
   const vz = new THREE.Vector3();
 
-  /** Orients an object with its +x axis along `dir` and its +y axis in the orbital plane. */
-  const orient = (object: THREE.Object3D, dir: Vec3): void => {
-    const side = cross(Z, dir);
-    const y = length(side) > 1e-6 ? normalize(side) : { x: 0, y: 1, z: 0 };
+  /**
+   * Orients an object with its +x axis along `dir`. Its +y axis goes towards `belly` (the
+   * spacecraft's body +Z, so the model rolls with the attitude) or, without it, in the orbital plane.
+   */
+  const orient = (object: THREE.Object3D, dir: Vec3, belly?: Vec3): void => {
+    const onPlane = belly ? sub(belly, scale(dir, dot(belly, dir))) : cross(Z, dir);
+    const fallback = cross(Z, dir);
+    const y = length(onPlane) > 1e-6 ? normalize(onPlane) : length(fallback) > 1e-6 ? normalize(fallback) : { x: 0, y: 1, z: 0 };
     const z = cross(dir, y);
     basis.makeBasis(vx.set(dir.x, dir.y, dir.z), vy.set(y.x, y.y, y.z), vz.set(z.x, z.y, z.z));
     object.quaternion.setFromRotationMatrix(basis);
@@ -386,6 +393,8 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     // --- Drawing frame and floating origin ---
     const cfg = s.vehicle;
     const shipDir = displayDir(s.attitude.dir);
+    // Body +Z (the "belly"): with no roll it lies in the orbital plane, as the model was always drawn.
+    const shipBelly = displayDir(cross(s.attitude.dir, s.attitude.pitchAxis));
     // Drawn heading: in cruise, along the trail (forwards, or backwards with the
     // capsule alone); otherwise (ascent, burns, pre-burn orientation, DAP in INRTL or MAN),
     // the actual attitude. The switch between the two is smoothed so it does not jump.
@@ -415,6 +424,9 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     // Earth rotates with the pad: that way the launch site always falls on a
     // vertex of the sphere and the rocket rests on the ground, not on a lower facet.
     bodies.earth.rotation.z = EARTH_ROTATION_IN_PLANE * s.t - frameAngle;
+    // Synchronous rotation: the Moon's near side (longitude 0 of its map, local +x)
+    // always faces Earth. Libration is ignored.
+    bodies.moon.rotation.z = Math.atan2(bodies.earth.position.y - bodies.moon.position.y, bodies.earth.position.x - bodies.moon.position.x);
     bodies.eiRing.position.copy(bodies.earth.position);
     bodies.soiRing.position.copy(bodies.moon.position);
     worldToScene(ZERO, s.t, frame, bodies.moonOrbit.position);
@@ -466,7 +478,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     if (is3d) {
       shipLengthM = model.update(cfg, engines, anchorBase);
       worldToScene(s.ship.r, s.t, frame, model.group.position);
-      orient(model.group, heading);
+      orient(model.group, heading, shipBelly);
       // Always at real scale; when it is smaller than a few pixels, the HTML layer marks it with a dot.
       model.group.scale.setScalar(M_TO_SCENE);
     } else if (iconKey !== lastIconKey) {
