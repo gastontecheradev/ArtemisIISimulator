@@ -19,7 +19,7 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: linear-gradient(180deg, var(--c-panel-hi), var(--c-panel) 30%, var(--c-panel-lo));
+  background: linear-gradient(180deg, var(--c-panel-hi), var(--c-metal) 30%, var(--c-panel-lo));
   border-right: 2px solid var(--c-frame);
 }
 
@@ -1371,7 +1371,7 @@ button.softkey:active {
   position: relative;
   width: min(520px, 100%);
   padding: 14px;
-  background: linear-gradient(180deg, var(--c-panel-hi), var(--c-panel) 40%, var(--c-panel-lo));
+  background: linear-gradient(180deg, var(--c-panel-hi), var(--c-metal) 40%, var(--c-panel-lo));
   border: 1px solid var(--c-frame);
   border-radius: 6px;
   box-shadow: inset 0 1px 0 var(--c-key), 0 10px 40px color-mix(in srgb, var(--c-screen) 75%, transparent);
@@ -1724,6 +1724,16 @@ button.softkey:active {
 }
 .legend-colors {
   z-index: 1;
+}
+/*
+ * Over the 3D view the background is no longer always black (the daytime sky of the ascent,
+ * the lit limb): its loose texts get a dark halo from the screen color so they stay legible.
+ */
+.pane-3d .tb-title,
+.pane-3d .legend,
+.pane-3d .body-label,
+.legend-colors {
+  text-shadow: 0 0 2px var(--c-screen), 0 0 5px var(--c-screen);
 }
 /* Jettisoned parts go under the spacecraft: just separated they are hidden and appear as they drift away. */
 .debris-marker {

@@ -7,7 +7,7 @@ import { Vec3, length, sub } from './math/vec3';
  * and Applications", table 8‑4, derived from the U.S. Standard Atmosphere 1976).
  * Each row: base altitude (km), density at the base (kg/m³) and scale height (km).
  */
-const LAYERS: readonly (readonly [number, number, number])[] = [
+export const ATMOSPHERE_LAYERS: readonly (readonly [number, number, number])[] = [
   [0, 1.225, 7.249],
   [25, 3.899e-2, 6.349],
   [30, 1.774e-2, 6.682],
@@ -26,7 +26,7 @@ const LAYERS: readonly (readonly [number, number, number])[] = [
   [180, 5.464e-10, 29.74],
 ];
 
-export const SEA_LEVEL_DENSITY = LAYERS[0][1];
+export const SEA_LEVEL_DENSITY = ATMOSPHERE_LAYERS[0][1];
 /** Above this altitude drag is neglected (the simulator's orbital flight has no atmosphere). */
 export const ATMOSPHERE_TOP = 200; // km
 
@@ -34,9 +34,9 @@ export const ATMOSPHERE_TOP = 200; // km
 export function airDensity(altitude: number): number {
   if (altitude >= ATMOSPHERE_TOP) return 0;
   const h = Math.max(0, altitude);
-  let i = LAYERS.length - 1;
-  while (i > 0 && h < LAYERS[i][0]) i--;
-  const [h0, rho0, scale] = LAYERS[i];
+  let i = ATMOSPHERE_LAYERS.length - 1;
+  while (i > 0 && h < ATMOSPHERE_LAYERS[i][0]) i--;
+  const [h0, rho0, scale] = ATMOSPHERE_LAYERS[i];
   return rho0 * Math.exp(-(h - h0) / scale);
 }
 

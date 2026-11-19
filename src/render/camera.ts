@@ -22,6 +22,8 @@ export interface CameraRig {
   setPan(x: number, y: number): void;
   /** Only the active camera handles the wheel and gestures. */
   setActive(on: boolean): void;
+  /** Wheel/pinch zoom speed of the 3D camera (1 = OrbitControls default). The 2D camera ignores it. */
+  setZoomSpeed(speed: number): void;
   update(): void;
   dispose(): void;
 }
@@ -141,6 +143,7 @@ export function createOrthoRig(dom: HTMLElement): CameraRig {
       active = on;
       if (!on) touches.clear();
     },
+    setZoomSpeed: () => undefined,
     update: () => undefined,
     dispose() {
       dom.removeEventListener('wheel', onWheel);
@@ -188,6 +191,9 @@ export function createPerspectiveRig(dom: HTMLElement): CameraRig {
     setPan: () => undefined,
     setActive(on) {
       controls.enabled = on;
+    },
+    setZoomSpeed(speed) {
+      controls.zoomSpeed = speed;
     },
     update: () => {
       controls.update();

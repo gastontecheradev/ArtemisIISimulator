@@ -10,12 +10,14 @@ import { timeline } from '../sim/mission/timeline';
 import { Prediction } from '../sim/propagate';
 import { Marker, SimState, TrailPoint, ephemerisOf } from '../sim/state';
 import { VehicleConfig } from '../sim/vehicle';
+import { createAtmosphere } from './atmosphere';
 import { createBodies } from './bodies';
 import { CameraRig, createOrthoRig, createPerspectiveRig } from './camera';
 import { createOverlay } from './markers';
 import { createStars } from './stars';
 import { createTrails } from './trails';
 import { createDebrisModels, createVehicleModel, debrisLength, vehicleExtent, vehicleIconSvg } from './vehicle';
+import { createWake } from './wake';
 import { KM_TO_SCENE, ViewFrame, toDisplayFrame, worldToScene } from './worldToScene';
 
 /** 'auto' follows the spacecraft up close (3D). The fixed modes frame the spacecraft, Earth, the Moon or the whole system. */
@@ -101,12 +103,18 @@ const SHIP_FILL = 0.45;
 const SHIP_DEPTH_KM = 50;
 
 /**
- * With the spacecraft camera, the 3D wake fades out at this many lengths of the current vehicle
- * behind it (a drawing choice, Gastón's pick): just a hint of where it comes from. At that scale
- * the real path is a straight line; its curve only shows over thousands of km, which from a
- * camera this close fall on the horizon.
+ * Zoom of the spacecraft camera (drawing choice): each wheel step multiplies the distance by
+ * ~1.05, so going from meters to thousands of km took hundreds of steps. While the spacecraft is
+ * at least ZOOM_SHIP_PX_SLOW px long the zoom keeps its normal speed; as it shrinks to
+ * ZOOM_SHIP_PX_FAST px (almost a dot) it speeds up (log-interpolated) to ZOOM_FAST times.
  */
-const WAKE_SHIP_LENGTHS = 3;
+const ZOOM_SHIP_PX_SLOW = 180;
+const ZOOM_SHIP_PX_FAST = 18;
+const ZOOM_FAST = 3;
+const shipZoomSpeed = (shipPx: number): number => {
+  const k = Math.log(ZOOM_SHIP_PX_SLOW / Math.max(shipPx, 1e-9)) / Math.log(ZOOM_SHIP_PX_SLOW / ZOOM_SHIP_PX_FAST);
+  return 1 + (ZOOM_FAST - 1) * Math.min(1, Math.max(0, k));
+};
 
 const NO_MARKERS: readonly Marker[] = [];
 
@@ -252,20 +260,24 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   // The entry interface ring stays on the map and the inset (where it reads as a
   // reference); in 3D it is hidden: next to the textured Earth it looked like the equator.
   bodies.eiRing.visible = !is3d;
-  const trails = createTrails(
-    {
-      out: cssVar(container, '--c-trail-out'),
-      ret: cssVar(container, '--c-trail-return'),
-      prox: cssVar(container, '--c-trail-prox'),
-      predicted: cssVar(container, '--c-label'),
-    },
-    { fade: is3d },
-  );
+  const trails = createTrails({
+    out: cssVar(container, '--c-trail-out'),
+    ret: cssVar(container, '--c-trail-return'),
+    prox: cssVar(container, '--c-trail-prox'),
+    predicted: cssVar(container, '--c-label'),
+  });
   // The model only exists in 3D: the map and the inset draw the spacecraft as a 2D icon.
   const model = is3d ? createVehicleModel(vehicleColors, anisotropy) : null;
   const debrisModels = is3d ? createDebrisModels(vehicleColors, anisotropy) : null;
   const debrisGroup = new THREE.Group();
   scene.add(bodies.group, trails.group);
+  // The ascent's exhaust wake in the air (wake.ts), at real scale: only in 3D.
+  const wake = is3d ? createWake(cssVar(container, '--c-label')) : null;
+  if (wake) scene.add(wake.mesh);
+  // Earth's atmosphere (atmosphere.ts), with the sky color of the attitude ball: only in 3D,
+  // the map and the inset keep their flat infographic style.
+  const atmosphere = is3d ? createAtmosphere(cssVar(container, '--c-adi-sky')) : null;
+  if (atmosphere) scene.add(atmosphere.mesh);
   // The spacecraft and its parts are drawn in a pass of their own, after the scene and with
   // its depth: the same Sun plus a dim fill from the camera, so the side in shadow still shows
   // its shape (a drawing choice, not physics). Earth and the Moon keep only the Sun.
@@ -301,6 +313,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     renderer.setSize(width, height);
     rig.resize(width, height);
     trails.setResolution(width, height);
+    wake?.setResolution(height);
     lastCameraKey = '';
   };
   const observer = new ResizeObserver(resize);
@@ -310,6 +323,8 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   // Caches so geometries are not rebuilt needlessly.
   let lastTrail: TrailPoint[] | null = null;
   let lastTrailKey = '';
+  let lastWakeTrail: TrailPoint[] | null = null;
+  let lastWakeKey = '';
   let lastPrediction: Prediction | null | undefined;
   let lastPredictionKey = '';
   let lastNominalKey = '';
@@ -482,6 +497,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     bodies.moon.rotation.z = Math.atan2(bodies.earth.position.y - bodies.moon.position.y, bodies.earth.position.x - bodies.moon.position.x);
     bodies.eiRing.position.copy(bodies.earth.position);
     bodies.soiRing.position.copy(bodies.moon.position);
+    atmosphere?.update(bodies.earth.position, bodies.moon.position, sun.position);
     worldToScene(ZERO, s.t, frame, bodies.moonOrbit.position);
     // The lunar orbit is an ellipse that depends on the phase: rebuilt if the ephemeris changes.
     if (eph !== orbitEph) {
@@ -502,18 +518,25 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     const tip = { t: s.t, r: s.ship.r };
     const viewKey = `${rotating}|${camera.mode}`;
     const trailEvery = s.trail.length > 6000 ? 6 : 1;
-    // 3D with the spacecraft camera: the trail lies in the orbital plane and, with the camera a
-    // few meters from the spacecraft, that plane is seen edge-on: the whole trail fell on the
-    // horizon and its last stretch looked like a straight line from the spacecraft to it. It is
-    // drawn as a short wake (WAKE_SHIP_LENGTHS). The Earth, Moon and overview cameras are far from
-    // the plane's edge and keep the whole trail.
-    const wake = shipCamera3d ? WAKE_SHIP_LENGTHS * vehicleExtent(s.vehicle).length * M_TO_SCENE : undefined;
-    const wakeKey = wake !== undefined ? Math.round(Math.log(Math.max(wake, 1e-12)) * 20) : 0;
-    const trailKey = `${viewKey}|${s.trail.length}|${s.t}|${wakeKey}`;
-    if (s.trail !== lastTrail || (trailKey !== lastTrailKey && frameCount % trailEvery === 0)) {
-      trails.setTraveled(s.trail, tip, frame, wake);
+    // With the spacecraft camera (AUTO or SHIP) the 3D view draws no trail (Gastón's request): the
+    // orbital plane is seen edge-on and the trail was a straight line to the horizon. The Earth,
+    // Moon and overview cameras, the map and the inset keep it.
+    trails.group.visible = !shipCamera3d;
+    const trailKey = `${viewKey}|${s.trail.length}|${s.t}`;
+    if (!shipCamera3d && (s.trail !== lastTrail || (trailKey !== lastTrailKey && frameCount % trailEvery === 0))) {
+      trails.setTraveled(s.trail, tip, frame);
       lastTrail = s.trail;
       lastTrailKey = trailKey;
+    }
+    // The exhaust wake moves with the air even while nothing else changes: rebuilt whenever the
+    // time does (it is a few hundred vertices, and nothing at all once the smoke is gone).
+    if (wake) {
+      const wakeKey = `${viewKey}|${s.t}`;
+      if (s.trail !== lastWakeTrail || wakeKey !== lastWakeKey) {
+        wake.update(s.trail, tip, eph, frame);
+        lastWakeTrail = s.trail;
+        lastWakeKey = wakeKey;
+      }
     }
     // The 3D view only draws what has been flown: the remaining trajectory is left to the map and the inset.
     const predictionKey = `${viewKey}|${Math.floor(frameCount / 10)}|${s.t}`;
@@ -576,6 +599,10 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     }
     // The numbered event markers stay on the map and the inset: in 3D they piled up on the horizon.
     overlay.setMarkers(is3d ? NO_MARKERS : s.markers, eventNames);
+    if (is3d) {
+      const shipPxNow = (shipLengthM * M_TO_SCENE * Math.min(width, height)) / 2 / viewRadiusScene;
+      rig.setZoomSpeed(shipCamera3d ? shipZoomSpeed(shipPxNow) : 1);
+    }
     rig.update();
     if (is3d) {
       // The camera never ends up inside a body (at real scale, near the spacecraft in
@@ -653,6 +680,8 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
       overlay.dispose();
       bodies.dispose();
       trails.dispose();
+      wake?.dispose();
+      atmosphere?.dispose();
       stars.dispose();
       model?.dispose();
       debrisModels?.dispose();
