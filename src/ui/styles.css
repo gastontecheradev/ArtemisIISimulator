@@ -1725,6 +1725,16 @@ button.softkey:active {
 .legend-colors {
   z-index: 1;
 }
+/*
+ * Over the 3D view the background is no longer always black (the daytime sky of the ascent,
+ * the lit limb): its loose texts get a dark halo from the screen color so they stay legible.
+ */
+.pane-3d .tb-title,
+.pane-3d .legend,
+.pane-3d .body-label,
+.legend-colors {
+  text-shadow: 0 0 2px var(--c-screen), 0 0 5px var(--c-screen);
+}
 /* Jettisoned parts go under the spacecraft: just separated they are hidden and appear as they drift away. */
 .debris-marker {
   z-index: 1;

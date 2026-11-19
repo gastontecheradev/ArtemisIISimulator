@@ -10,12 +10,14 @@ import { timeline } from '../sim/mission/timeline';
 import { Prediction } from '../sim/propagate';
 import { Marker, SimState, TrailPoint, ephemerisOf } from '../sim/state';
 import { VehicleConfig } from '../sim/vehicle';
+import { createAtmosphere } from './atmosphere';
 import { createBodies } from './bodies';
 import { CameraRig, createOrthoRig, createPerspectiveRig } from './camera';
 import { createOverlay } from './markers';
 import { createStars } from './stars';
 import { createTrails } from './trails';
 import { createDebrisModels, createVehicleModel, debrisLength, vehicleExtent, vehicleIconSvg } from './vehicle';
+import { createWake } from './wake';
 import { KM_TO_SCENE, ViewFrame, toDisplayFrame, worldToScene } from './worldToScene';
 
 /** 'auto' follows the spacecraft up close (3D). The fixed modes frame the spacecraft, Earth, the Moon or the whole system. */
@@ -269,6 +271,13 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   const debrisModels = is3d ? createDebrisModels(vehicleColors, anisotropy) : null;
   const debrisGroup = new THREE.Group();
   scene.add(bodies.group, trails.group);
+  // The ascent's exhaust wake in the air (wake.ts), at real scale: only in 3D.
+  const wake = is3d ? createWake(cssVar(container, '--c-label')) : null;
+  if (wake) scene.add(wake.mesh);
+  // Earth's atmosphere (atmosphere.ts), with the sky color of the attitude ball: only in 3D,
+  // the map and the inset keep their flat infographic style.
+  const atmosphere = is3d ? createAtmosphere(cssVar(container, '--c-adi-sky')) : null;
+  if (atmosphere) scene.add(atmosphere.mesh);
   // The spacecraft and its parts are drawn in a pass of their own, after the scene and with
   // its depth: the same Sun plus a dim fill from the camera, so the side in shadow still shows
   // its shape (a drawing choice, not physics). Earth and the Moon keep only the Sun.
@@ -304,6 +313,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     renderer.setSize(width, height);
     rig.resize(width, height);
     trails.setResolution(width, height);
+    wake?.setResolution(height);
     lastCameraKey = '';
   };
   const observer = new ResizeObserver(resize);
@@ -313,6 +323,8 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   // Caches so geometries are not rebuilt needlessly.
   let lastTrail: TrailPoint[] | null = null;
   let lastTrailKey = '';
+  let lastWakeTrail: TrailPoint[] | null = null;
+  let lastWakeKey = '';
   let lastPrediction: Prediction | null | undefined;
   let lastPredictionKey = '';
   let lastNominalKey = '';
@@ -485,6 +497,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     bodies.moon.rotation.z = Math.atan2(bodies.earth.position.y - bodies.moon.position.y, bodies.earth.position.x - bodies.moon.position.x);
     bodies.eiRing.position.copy(bodies.earth.position);
     bodies.soiRing.position.copy(bodies.moon.position);
+    atmosphere?.update(bodies.earth.position, bodies.moon.position, sun.position);
     worldToScene(ZERO, s.t, frame, bodies.moonOrbit.position);
     // The lunar orbit is an ellipse that depends on the phase: rebuilt if the ephemeris changes.
     if (eph !== orbitEph) {
@@ -514,6 +527,16 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
       trails.setTraveled(s.trail, tip, frame);
       lastTrail = s.trail;
       lastTrailKey = trailKey;
+    }
+    // The exhaust wake moves with the air even while nothing else changes: rebuilt whenever the
+    // time does (it is a few hundred vertices, and nothing at all once the smoke is gone).
+    if (wake) {
+      const wakeKey = `${viewKey}|${s.t}`;
+      if (s.trail !== lastWakeTrail || wakeKey !== lastWakeKey) {
+        wake.update(s.trail, tip, eph, frame);
+        lastWakeTrail = s.trail;
+        lastWakeKey = wakeKey;
+      }
     }
     // The 3D view only draws what has been flown: the remaining trajectory is left to the map and the inset.
     const predictionKey = `${viewKey}|${Math.floor(frameCount / 10)}|${s.t}`;
@@ -657,6 +680,8 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
       overlay.dispose();
       bodies.dispose();
       trails.dispose();
+      wake?.dispose();
+      atmosphere?.dispose();
       stars.dispose();
       model?.dispose();
       debrisModels?.dispose();
