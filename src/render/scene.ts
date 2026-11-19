@@ -101,14 +101,6 @@ const SHIP_FILL = 0.45;
 const SHIP_DEPTH_KM = 50;
 
 /**
- * With the spacecraft camera, the 3D wake fades out at this many lengths of the current vehicle
- * behind it (a drawing choice, Gastón's pick): just a hint of where it comes from. At that scale
- * the real path is a straight line; its curve only shows over thousands of km, which from a
- * camera this close fall on the horizon.
- */
-const WAKE_SHIP_LENGTHS = 3;
-
-/**
  * Zoom of the spacecraft camera (drawing choice): each wheel step multiplies the distance by
  * ~1.05, so going from meters to thousands of km took hundreds of steps. While the spacecraft is
  * at least ZOOM_SHIP_PX_SLOW px long the zoom keeps its normal speed; as it shrinks to
@@ -266,15 +258,12 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   // The entry interface ring stays on the map and the inset (where it reads as a
   // reference); in 3D it is hidden: next to the textured Earth it looked like the equator.
   bodies.eiRing.visible = !is3d;
-  const trails = createTrails(
-    {
-      out: cssVar(container, '--c-trail-out'),
-      ret: cssVar(container, '--c-trail-return'),
-      prox: cssVar(container, '--c-trail-prox'),
-      predicted: cssVar(container, '--c-label'),
-    },
-    { fade: is3d },
-  );
+  const trails = createTrails({
+    out: cssVar(container, '--c-trail-out'),
+    ret: cssVar(container, '--c-trail-return'),
+    prox: cssVar(container, '--c-trail-prox'),
+    predicted: cssVar(container, '--c-label'),
+  });
   // The model only exists in 3D: the map and the inset draw the spacecraft as a 2D icon.
   const model = is3d ? createVehicleModel(vehicleColors, anisotropy) : null;
   const debrisModels = is3d ? createDebrisModels(vehicleColors, anisotropy) : null;
@@ -516,16 +505,13 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     const tip = { t: s.t, r: s.ship.r };
     const viewKey = `${rotating}|${camera.mode}`;
     const trailEvery = s.trail.length > 6000 ? 6 : 1;
-    // 3D with the spacecraft camera: the trail lies in the orbital plane and, with the camera a
-    // few meters from the spacecraft, that plane is seen edge-on: the whole trail fell on the
-    // horizon and its last stretch looked like a straight line from the spacecraft to it. It is
-    // drawn as a short wake (WAKE_SHIP_LENGTHS). The Earth, Moon and overview cameras are far from
-    // the plane's edge and keep the whole trail.
-    const wake = shipCamera3d ? WAKE_SHIP_LENGTHS * vehicleExtent(s.vehicle).length * M_TO_SCENE : undefined;
-    const wakeKey = wake !== undefined ? Math.round(Math.log(Math.max(wake, 1e-12)) * 20) : 0;
-    const trailKey = `${viewKey}|${s.trail.length}|${s.t}|${wakeKey}`;
-    if (s.trail !== lastTrail || (trailKey !== lastTrailKey && frameCount % trailEvery === 0)) {
-      trails.setTraveled(s.trail, tip, frame, wake);
+    // With the spacecraft camera (AUTO or SHIP) the 3D view draws no trail (Gastón's request): the
+    // orbital plane is seen edge-on and the trail was a straight line to the horizon. The Earth,
+    // Moon and overview cameras, the map and the inset keep it.
+    trails.group.visible = !shipCamera3d;
+    const trailKey = `${viewKey}|${s.trail.length}|${s.t}`;
+    if (!shipCamera3d && (s.trail !== lastTrail || (trailKey !== lastTrailKey && frameCount % trailEvery === 0))) {
+      trails.setTraveled(s.trail, tip, frame);
       lastTrail = s.trail;
       lastTrailKey = trailKey;
     }
