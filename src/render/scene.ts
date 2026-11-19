@@ -101,11 +101,12 @@ const SHIP_FILL = 0.45;
 const SHIP_DEPTH_KM = 50;
 
 /**
- * With the spacecraft camera, the 3D wake fades out at this multiple of the camera's distance to
- * the spacecraft (a drawing choice): long enough to show where it comes from, short enough to end
- * well before the horizon.
+ * With the spacecraft camera, the 3D wake fades out at this many lengths of the current vehicle
+ * behind it (a drawing choice, Gastón's pick): just a hint of where it comes from. At that scale
+ * the real path is a straight line; its curve only shows over thousands of km, which from a
+ * camera this close fall on the horizon.
  */
-const WAKE_K = 4;
+const WAKE_SHIP_LENGTHS = 3;
 
 const NO_MARKERS: readonly Marker[] = [];
 
@@ -326,7 +327,6 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   let lastTime = performance.now();
   let raf = 0;
   const basis = new THREE.Matrix4();
-  const shipScenePos = new THREE.Vector3();
   const vx = new THREE.Vector3();
   const vy = new THREE.Vector3();
   const vz = new THREE.Vector3();
@@ -492,7 +492,11 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     }
     bodies.moonOrbit.rotation.z = -frameAngle;
     // In the rotating frame the Moon barely moves: its orbit adds nothing.
-    bodies.moonOrbit.visible = !rotating;
+    // With the spacecraft camera the orbital plane is seen edge-on and the lunar orbit and the
+    // sphere of influence were just a line on the horizon: hidden there.
+    const shipCamera3d = is3d && camera.mode === 'ship';
+    bodies.moonOrbit.visible = !rotating && !shipCamera3d;
+    bodies.soiRing.visible = !shipCamera3d;
 
     // --- Trails ---
     const tip = { t: s.t, r: s.ship.r };
@@ -501,10 +505,9 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     // 3D with the spacecraft camera: the trail lies in the orbital plane and, with the camera a
     // few meters from the spacecraft, that plane is seen edge-on: the whole trail fell on the
     // horizon and its last stretch looked like a straight line from the spacecraft to it. It is
-    // drawn as a wake that fades out at WAKE_K times the camera's distance to the spacecraft. The
-    // Earth, Moon and overview cameras are far from the plane's edge and keep the whole trail.
-    const wake =
-      is3d && camera.mode === 'ship' ? WAKE_K * rig.camera.position.distanceTo(worldToScene(s.ship.r, s.t, frame, shipScenePos)) : undefined;
+    // drawn as a short wake (WAKE_SHIP_LENGTHS). The Earth, Moon and overview cameras are far from
+    // the plane's edge and keep the whole trail.
+    const wake = shipCamera3d ? WAKE_SHIP_LENGTHS * vehicleExtent(s.vehicle).length * M_TO_SCENE : undefined;
     const wakeKey = wake !== undefined ? Math.round(Math.log(Math.max(wake, 1e-12)) * 20) : 0;
     const trailKey = `${viewKey}|${s.trail.length}|${s.t}|${wakeKey}`;
     if (s.trail !== lastTrail || (trailKey !== lastTrailKey && frameCount % trailEvery === 0)) {
