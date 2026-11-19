@@ -31,7 +31,9 @@
   --c-body-moon: #787875; /* Moon's surface */
   --c-ship-hull: #bcbcbc; /* white hull */
   --c-ship-dark: #0f0f0f; /* nozzle and heat shield */
-  --c-ship-solar: #9398a5; /* solar array cells */
+  --c-ship-solar: #003573; /* solar array cells */
+  --c-ship-metal: #9da7b2; /* spacecraft adapter metal */
+  --c-ship-gold: #b1851a; /* docking system gold */
   --c-ship-core: #fa9f49; /* rocket core stage */
   --c-net-nsn: #008a66; /* Near Space Network */
   --c-net-dsn: #c7330b; /* Deep Space Network */

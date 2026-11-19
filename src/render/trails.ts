@@ -16,8 +16,12 @@ export interface TrailColors {
 
 export interface Trails {
   readonly group: THREE.Group;
-  /** Flown trail (solid), colored by phase as in NASA's mission map. */
-  setTraveled(points: readonly TrailPoint[], tip: { t: number; r: Vec3 }, frame: ViewFrame): void;
+  /**
+   * Flown trail (solid), colored by phase as in NASA's mission map. With `wake` (scene units,
+   * only in a view created with `fade`) it fades out with the distance to the spacecraft and is
+   * gone at that radius.
+   */
+  setTraveled(points: readonly TrailPoint[], tip: { t: number; r: Vec3 }, frame: ViewFrame, wake?: number): void;
   /** Predicted trajectory (dashed), from the spacecraft forward. */
   setPredicted(points: readonly TrajectoryPoint[], tip: { t: number; r: Vec3 }, frame: ViewFrame): void;
   /** Whole nominal plan (faint), drawn from the start. `points` = [t, x, y] in inertial km. */
@@ -30,9 +34,67 @@ export interface Trails {
   dispose(): void;
 }
 
-export function createTrails(colors: TrailColors): Trails {
+/** Fraction of the wake radius up to which the trail keeps its full color. */
+const WAKE_SOLID = 0.35;
+
+/**
+ * Parameters t in (0, 1), sorted, where the segment a → b crosses the spheres of radius
+ * `radii` around c: there the fade gets a vertex of its own, so it follows the distance.
+ */
+function crossings(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, radii: readonly number[]): number[] {
+  const d = new THREE.Vector3().subVectors(b, a);
+  const m = new THREE.Vector3().subVectors(a, c);
+  const A = d.dot(d);
+  if (A === 0) return [];
+  const B = 2 * m.dot(d);
+  const out: number[] = [];
+  for (const r of radii) {
+    const disc = B * B - 4 * A * (m.dot(m) - r * r);
+    if (disc <= 0) continue;
+    const q = Math.sqrt(disc);
+    for (const t of [(-B - q) / (2 * A), (-B + q) / (2 * A)]) if (t > 0 && t < 1) out.push(t);
+  }
+  return out.sort((x, y) => x - y);
+}
+
+/**
+ * The line material only takes an RGB color per vertex: this adds an opacity per vertex
+ * (`instanceFadeStart`/`End`, one pair per segment like the colors). It is not done additively
+ * because there the overlapping ends of the segments add up and the line looks dotted.
+ */
+function addVertexFade(material: LineMaterial): void {
+  material.vertexShader = material.vertexShader.replace(
+    'void main() {',
+    'attribute float instanceFadeStart;\nattribute float instanceFadeEnd;\nvarying float vFade;\nvoid main() {\n\tvFade = ( position.y < 0.5 ) ? instanceFadeStart : instanceFadeEnd;',
+  );
+  material.fragmentShader = material.fragmentShader
+    .replace('void main() {', 'varying float vFade;\nvoid main() {')
+    .replace('float alpha = opacity;', 'float alpha = opacity * vFade;');
+}
+
+/** Opacity of each vertex of a polyline, in the pairs format of the line geometry. */
+function setFade(geometry: LineGeometry, fade: readonly number[]): void {
+  const pairs = new Float32Array(2 * (fade.length - 1));
+  for (let i = 0; i < fade.length - 1; i++) {
+    pairs[2 * i] = fade[i];
+    pairs[2 * i + 1] = fade[i + 1];
+  }
+  const buffer = new THREE.InstancedInterleavedBuffer(pairs, 2, 1);
+  geometry.setAttribute('instanceFadeStart', new THREE.InterleavedBufferAttribute(buffer, 1, 0));
+  geometry.setAttribute('instanceFadeEnd', new THREE.InterleavedBufferAttribute(buffer, 1, 1));
+}
+
+/** `fade`: the flown trail can fade out (`wake` in `setTraveled`). The 3D view uses it. */
+export function createTrails(colors: TrailColors, options: { fade?: boolean } = {}): Trails {
   const group = new THREE.Group();
-  const traveledMaterial = new LineMaterial({ linewidth: 2.5, vertexColors: true, worldUnits: false });
+  const fades = options.fade === true;
+  const traveledMaterial = new LineMaterial({
+    linewidth: 2.5,
+    vertexColors: true,
+    worldUnits: false,
+    ...(fades ? { transparent: true, depthWrite: false } : {}),
+  });
+  if (fades) addVertexFade(traveledMaterial);
   const predictedMaterial = new LineMaterial({
     color: new THREE.Color(colors.predicted).getHex(),
     linewidth: 1.5,
@@ -69,7 +131,7 @@ export function createTrails(colors: TrailColors): Trails {
     return p.phase === 'REGRESO' || p.phase === 'ENTRADA' ? c.ret : c.out;
   };
 
-  const replace = (old: Line2 | null, positions: number[], cols: number[] | null, material: LineMaterial): Line2 | null => {
+  const replace = (old: Line2 | null, positions: number[], cols: number[] | null, material: LineMaterial, fade?: number[]): Line2 | null => {
     if (old) {
       group.remove(old);
       old.geometry.dispose();
@@ -78,6 +140,7 @@ export function createTrails(colors: TrailColors): Trails {
     const geometry = new LineGeometry();
     geometry.setPositions(positions);
     if (cols) geometry.setColors(cols);
+    if (fade) setFade(geometry, fade);
     const line = new Line2(geometry, material);
     line.computeLineDistances();
     line.frustumCulled = false;
@@ -88,22 +151,43 @@ export function createTrails(colors: TrailColors): Trails {
   const v = new THREE.Vector3();
   return {
     group,
-    setTraveled(points, tip, frame) {
+    setTraveled(points, tip, frame, wake) {
       const f = frame;
       traveledAnchor = frame.origin;
       const positions: number[] = [];
       const cols: number[] = [];
+      const fade: number[] = [];
+      const ship = worldToScene(tip.r, tip.t, f, new THREE.Vector3());
+      const solid = wake !== undefined ? wake * WAKE_SOLID : 0;
+      // Opacity at a point: full near the spacecraft, down to zero at the wake radius.
+      const shade = (q: THREE.Vector3): number => {
+        if (wake === undefined) return 1;
+        const d = q.distanceTo(ship);
+        return d <= solid ? 1 : d >= wake ? 0 : 1 - (d - solid) / (wake - solid);
+      };
+      const push = (q: THREE.Vector3, col: THREE.Color): void => {
+        positions.push(q.x, q.y, q.z);
+        cols.push(col.r, col.g, col.b);
+        fade.push(shade(q));
+      };
+      const prev = new THREE.Vector3();
+      const mid = new THREE.Vector3();
+      let started = false;
+      const visit = (q: THREE.Vector3, col: THREE.Color): void => {
+        if (wake !== undefined && started)
+          for (const t of crossings(prev, q, ship, [solid, wake])) push(mid.lerpVectors(prev, q, t), col);
+        push(q, col);
+        prev.copy(q);
+        started = true;
+      };
       let last = c.out;
       for (const p of points) {
         worldToScene(p.r, p.t, f, v);
-        positions.push(v.x, v.y, v.z);
         last = colorOf(p);
-        cols.push(last.r, last.g, last.b);
+        visit(v, last);
       }
-      worldToScene(tip.r, tip.t, f, v);
-      positions.push(v.x, v.y, v.z);
-      cols.push(last.r, last.g, last.b);
-      traveled = replace(traveled, positions, cols, traveledMaterial);
+      visit(ship, last);
+      traveled = replace(traveled, positions, cols, traveledMaterial, fades ? fade : undefined);
     },
     setPredicted(points, tip, frame) {
       const f = frame;

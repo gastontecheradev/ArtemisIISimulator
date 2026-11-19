@@ -8,7 +8,7 @@ import nominalRaw from '../sim/mission/nominal-path.json';
 import { MissionParams } from '../sim/mission/params';
 import { timeline } from '../sim/mission/timeline';
 import { Prediction } from '../sim/propagate';
-import { SimState, TrailPoint, ephemerisOf } from '../sim/state';
+import { Marker, SimState, TrailPoint, ephemerisOf } from '../sim/state';
 import { VehicleConfig } from '../sim/vehicle';
 import { createBodies } from './bodies';
 import { CameraRig, createOrthoRig, createPerspectiveRig } from './camera';
@@ -85,6 +85,29 @@ export function insetTarget(s: SimState): 'earth' | 'moon' {
 function mapAngleFor(rotating: boolean, eph: ReturnType<typeof ephemerisOf>, flybyMet: number): number {
   return rotating ? Math.PI : eph.moonAngle(flybyMet) + Math.PI;
 }
+
+/**
+ * Intensity of the light that fills the spacecraft from the camera (the Sun gives 2.6 and the
+ * ambient 0.16): a drawing choice so the shaded side is not black.
+ */
+const SHIP_FILL = 0.45;
+
+/**
+ * Reach (km) of the spacecraft's own depth pass. The scene's far plane covers the whole
+ * mission, and with the logarithmic depth buffer that leaves ~0.7 m of depth resolution near
+ * the spacecraft: pieces a few centimeters apart flicker. With a far plane this close (the
+ * spacecraft's distance plus this reach) it drops to ~3 mm. Parts farther than this are a dot.
+ */
+const SHIP_DEPTH_KM = 50;
+
+/**
+ * With the spacecraft camera, the 3D wake fades out at this multiple of the camera's distance to
+ * the spacecraft (a drawing choice): long enough to show where it comes from, short enough to end
+ * well before the horizon.
+ */
+const WAKE_K = 4;
+
+const NO_MARKERS: readonly Marker[] = [];
 
 /** Time constant (real s) with which the spacecraft drawing turns towards its heading. */
 const HEADING_SMOOTHING = 0.12;
@@ -183,6 +206,12 @@ function mapFraming(
 const MAP_PAD_TOP = 40;
 const MAP_PAD_BOTTOM = 100;
 
+/** A length in px from a CSS custom property of `el`, or `fallback` when it is not set. */
+function cssPx(el: Element, name: string, fallback: number): number {
+  const v = parseFloat(getComputedStyle(el).getPropertyValue(name));
+  return Number.isFinite(v) ? v : fallback;
+}
+
 /** Creates a trajectory view inside `container` and starts its draw loop. */
 export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps: TrajectoryViewDeps): { dispose(): void } {
   const is3d = dim === '3d';
@@ -207,7 +236,10 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     solar: cssVar(container, '--c-ship-solar'),
     core: cssVar(container, '--c-ship-core'),
     flame: cssVar(container, '--c-trail-prox'),
+    metal: cssVar(container, '--c-ship-metal'),
+    gold: cssVar(container, '--c-ship-gold'),
   };
+  const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const stars = createStars(cssVar(container, '--c-label'));
   const bodies = createBodies({
     earth: cssVar(container, '--c-body-earth'),
@@ -219,17 +251,35 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   // The entry interface ring stays on the map and the inset (where it reads as a
   // reference); in 3D it is hidden: next to the textured Earth it looked like the equator.
   bodies.eiRing.visible = !is3d;
-  const trails = createTrails({
-    out: cssVar(container, '--c-trail-out'),
-    ret: cssVar(container, '--c-trail-return'),
-    prox: cssVar(container, '--c-trail-prox'),
-    predicted: cssVar(container, '--c-label'),
-  });
-  const model = createVehicleModel(vehicleColors);
-  const debrisModels = createDebrisModels(vehicleColors);
+  const trails = createTrails(
+    {
+      out: cssVar(container, '--c-trail-out'),
+      ret: cssVar(container, '--c-trail-return'),
+      prox: cssVar(container, '--c-trail-prox'),
+      predicted: cssVar(container, '--c-label'),
+    },
+    { fade: is3d },
+  );
+  // The model only exists in 3D: the map and the inset draw the spacecraft as a 2D icon.
+  const model = is3d ? createVehicleModel(vehicleColors, anisotropy) : null;
+  const debrisModels = is3d ? createDebrisModels(vehicleColors, anisotropy) : null;
   const debrisGroup = new THREE.Group();
-  model.group.visible = is3d;
-  scene.add(bodies.group, trails.group, model.group, debrisGroup);
+  scene.add(bodies.group, trails.group);
+  // The spacecraft and its parts are drawn in a pass of their own, after the scene and with
+  // its depth: the same Sun plus a dim fill from the camera, so the side in shadow still shows
+  // its shape (a drawing choice, not physics). Earth and the Moon keep only the Sun.
+  const shipScene = new THREE.Scene();
+  const shipSun = new THREE.DirectionalLight(0xffffff, 2.6);
+  const shipFill = new THREE.DirectionalLight(0xffffff, SHIP_FILL);
+  shipScene.add(shipSun, shipFill, new THREE.AmbientLight(0xffffff, 0.16), debrisGroup);
+  if (model) shipScene.add(model.group);
+  // Near the spacecraft that pass uses its own far plane (see SHIP_DEPTH_KM), and Earth only
+  // writes its depth there, so the ground still hides what is under it (the flames on the pad).
+  const shipCamera = new THREE.PerspectiveCamera();
+  const earthDepthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
+  const earthDepth = new THREE.Mesh(bodies.earth.geometry, earthDepthMaterial);
+  earthDepth.matrixAutoUpdate = false;
+  shipScene.add(earthDepth);
   const overlay = createOverlay(container);
   const rig: CameraRig = is3d ? createPerspectiveRig(renderer.domElement) : createOrthoRig(renderer.domElement);
   // The inset is static. The map has zoom (wheel or pinch, towards the cursor) and can be
@@ -276,6 +326,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   let lastTime = performance.now();
   let raf = 0;
   const basis = new THREE.Matrix4();
+  const shipScenePos = new THREE.Vector3();
   const vx = new THREE.Vector3();
   const vy = new THREE.Vector3();
   const vz = new THREE.Vector3();
@@ -340,6 +391,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     const displayDir = (d: Vec3): Vec3 => (frameAngle ? rotateZ(d, -frameAngle) : d);
     const toSun = displayDir(sunDirection(s.t));
     sun.position.set(toSun.x, toSun.y, toSun.z);
+    shipSun.position.copy(sun.position);
 
     // --- Camera: effective mode and framing ---
     const base: ViewFrame = { eph, rotating, angle: mapAngle, origin: ZERO };
@@ -348,7 +400,8 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
       const key = `map|${settings.mapFrame}|${width}x${height}|${s.params.moonAngle0Deg}`;
       if (key !== lastCameraKey) {
         // With the rotation, the rotating frame ends up vertical: both frames need the margins.
-        const pad = { top: MAP_PAD_TOP, bottom: MAP_PAD_BOTTOM };
+        // A narrow view lays the toolbar and the HUD out of the map (styles.css sets the pads to 0).
+        const pad = { top: cssPx(container, '--map-pad-top', MAP_PAD_TOP), bottom: cssPx(container, '--map-pad-bottom', MAP_PAD_BOTTOM) };
         const f = mapFraming(eph, { width, height, ...pad }, base);
         mapCenter = f.center;
         rig.setViewRadius(f.radius);
@@ -445,9 +498,17 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     const tip = { t: s.t, r: s.ship.r };
     const viewKey = `${rotating}|${camera.mode}`;
     const trailEvery = s.trail.length > 6000 ? 6 : 1;
-    const trailKey = `${viewKey}|${s.trail.length}|${s.t}`;
+    // 3D with the spacecraft camera: the trail lies in the orbital plane and, with the camera a
+    // few meters from the spacecraft, that plane is seen edge-on: the whole trail fell on the
+    // horizon and its last stretch looked like a straight line from the spacecraft to it. It is
+    // drawn as a wake that fades out at WAKE_K times the camera's distance to the spacecraft. The
+    // Earth, Moon and overview cameras are far from the plane's edge and keep the whole trail.
+    const wake =
+      is3d && camera.mode === 'ship' ? WAKE_K * rig.camera.position.distanceTo(worldToScene(s.ship.r, s.t, frame, shipScenePos)) : undefined;
+    const wakeKey = wake !== undefined ? Math.round(Math.log(Math.max(wake, 1e-12)) * 20) : 0;
+    const trailKey = `${viewKey}|${s.trail.length}|${s.t}|${wakeKey}`;
     if (s.trail !== lastTrail || (trailKey !== lastTrailKey && frameCount % trailEvery === 0)) {
-      trails.setTraveled(s.trail, tip, frame);
+      trails.setTraveled(s.trail, tip, frame, wake);
       lastTrail = s.trail;
       lastTrailKey = trailKey;
     }
@@ -475,7 +536,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     const enginesKey = engines.join(',');
     const iconKey = `${cfg.srbSeparated}${cfg.lasJettisoned}${cfg.coreSeparated}${cfg.icpsSeparated}${cfg.cmSeparated}|${enginesKey}`;
     let shipLengthM = 0;
-    if (is3d) {
+    if (model) {
       shipLengthM = model.update(cfg, engines, anchorBase);
       worldToScene(s.ship.r, s.t, frame, model.group.position);
       orient(model.group, heading, shipBelly);
@@ -490,7 +551,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     lastEngines = enginesKey;
 
     // --- Jettisoned parts ---
-    if (is3d) {
+    if (debrisModels) {
       const alive = new Set(s.debris.map((b) => b.id));
       for (const child of [...debrisGroup.children]) if (!alive.has(child.name)) debrisGroup.remove(child);
       for (const b of s.debris) {
@@ -510,7 +571,8 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
       eventNames = new Map(timeline(s.params).map((e) => [e.id, e.name]));
       lastParams = s.params;
     }
-    overlay.setMarkers(s.markers, eventNames);
+    // The numbered event markers stay on the map and the inset: in 3D they piled up on the horizon.
+    overlay.setMarkers(is3d ? NO_MARKERS : s.markers, eventNames);
     rig.update();
     if (is3d) {
       // The camera never ends up inside a body (at real scale, near the spacecraft in
@@ -555,6 +617,27 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     stars.render(renderer, rig.camera, width / height, frameAngle);
     renderer.clearDepth();
     renderer.render(scene, rig.camera);
+    if (model) {
+      // The fill comes from the camera's side (the scene origin is the point it looks at).
+      shipFill.position.copy(rig.camera.position);
+      const cam = rig.camera;
+      const reach = SHIP_DEPTH_KM * KM_TO_SCENE;
+      const distance = cam.position.distanceTo(model.group.position);
+      if (cam instanceof THREE.PerspectiveCamera && distance < reach) {
+        shipCamera.copy(cam);
+        shipCamera.far = distance + reach;
+        shipCamera.updateProjectionMatrix();
+        // Earth's world matrix as the main pass just computed it.
+        earthDepth.matrix.copy(bodies.earth.matrixWorld);
+        earthDepth.matrixWorldNeedsUpdate = true;
+        earthDepth.visible = true;
+        renderer.clearDepth();
+        renderer.render(shipScene, shipCamera);
+      } else {
+        earthDepth.visible = false;
+        renderer.render(shipScene, cam);
+      }
+    }
   };
   raf = requestAnimationFrame(draw);
 
@@ -568,8 +651,9 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
       bodies.dispose();
       trails.dispose();
       stars.dispose();
-      model.dispose();
-      debrisModels.dispose();
+      model?.dispose();
+      debrisModels?.dispose();
+      earthDepthMaterial.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     },

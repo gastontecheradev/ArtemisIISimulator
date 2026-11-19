@@ -1,11 +1,26 @@
 /* Layout and components. Colors come from theme.css (palette extracted from NASA reference images). */
 
 /* ---------- General layout ---------- */
+/*
+ * Panel column: half the window on wide screens; below that it keeps 954 px (two Display Units
+ * with room to spare) while that is at most 65 % of the window, then 65 %, and never less than
+ * 816 px: the narrowest width that fits two Display Units and the F1–F4 row with text at full
+ * size (the panel's compact rules below take over under 950 px). The views get what is left.
+ */
 .app {
   display: grid;
-  grid-template-columns: minmax(540px, 50%) 1fr;
+  grid-template-columns: max(50%, min(954px, max(816px, 65%))) minmax(0, 1fr);
   height: 100%;
   min-height: 0;
+}
+
+.panel-col {
+  container: panel / inline-size;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--c-panel-hi), var(--c-panel) 30%, var(--c-panel-lo));
+  border-right: 2px solid var(--c-frame);
 }
 
 .panel {
@@ -14,10 +29,9 @@
   gap: 8px;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   padding: 8px;
   overflow-y: auto;
-  background: linear-gradient(180deg, var(--c-panel-hi), var(--c-panel) 30%, var(--c-panel-lo));
-  border-right: 2px solid var(--c-frame);
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
@@ -36,9 +50,11 @@
     grid-template-rows: auto 70vh;
     height: auto;
   }
+  .panel-col {
+    border-right: 0;
+  }
   .panel {
     overflow: visible;
-    border-right: 0;
   }
 }
 
@@ -1017,19 +1033,6 @@ button.softkey:active {
 .guard:not(.up) + .lever-btn.fire .lever {
   opacity: 0.55;
 }
-/* Narrower windows: slightly smaller switches so the plates still fit in one row. */
-@media (max-width: 1800px) {
-  .lever {
-    width: 34px;
-    height: 34px;
-  }
-  .guard {
-    width: 52px;
-  }
-  .guard:not(.up) + .lever-btn.fire::after {
-    top: 20px;
-  }
-}
 
 /* ---------- Time and log ---------- */
 .panel-note {
@@ -1228,11 +1231,12 @@ button.softkey:active {
 .ship-icon .core {
   fill: var(--c-ship-core);
 }
+/* The cells are dark blue: lightened so the wings read against the black map. */
 .ship-icon .solar {
-  fill: var(--c-ship-solar);
+  fill: color-mix(in srgb, var(--c-ship-solar) 65%, white);
 }
 .ship-icon .solar.far {
-  fill: color-mix(in srgb, var(--c-ship-solar) 60%, black);
+  fill: color-mix(in srgb, var(--c-ship-solar) 85%, white);
 }
 .ship-icon .flame {
   fill: var(--c-trail-prox);
@@ -1688,6 +1692,7 @@ button.softkey:active {
 
 /* ---------- Split view: 2D map on top, 3D view below ---------- */
 .view {
+  container: view / inline-size;
   display: grid;
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 }
@@ -2621,4 +2626,236 @@ button.ann.link.acked {
   color: var(--c-screen);
   background: var(--c-manual);
   border-color: var(--c-manual);
+}
+
+/*
+ * ---------- Compact panel (narrow windows) ----------
+ * Below 950 px of panel the layout stays the same (two Display Units, F1–F4 in one row) and no
+ * font size changes: only bezels, keys, margins, gaps and switch bodies get smaller, and a few
+ * columns size to their content instead of a fixed share.
+ */
+@container panel (max-width: 949px) {
+  /* The scrollbar's room is kept even without one, so a short window does not narrow the content. */
+  .panel {
+    gap: 6px;
+    padding: 6px;
+    scrollbar-gutter: stable;
+  }
+  /* Tall enough that no page line is hidden: a short window scrolls the panel instead. */
+  .du-row {
+    gap: 5px;
+    min-height: 500px;
+  }
+  .du {
+    grid-template-columns: 16px minmax(0, 1fr) 16px;
+    padding: 3px 2px;
+  }
+  .du-keys.left .softkey,
+  .du-keys.right .softkey {
+    width: 11px;
+  }
+  .du-corner {
+    width: 16px;
+    letter-spacing: -0.04em;
+  }
+  .du-knob {
+    width: 13px;
+    height: 13px;
+  }
+  .du-menu {
+    padding: 0 1px;
+  }
+  .du-actions {
+    width: 40px;
+  }
+  .du-action {
+    margin: 0 1px;
+    padding: 1px 0;
+  }
+  .page {
+    padding: 5px 4px;
+  }
+  /* Flt.Traj: the data column takes its natural width, the graph the rest. */
+  .pfd-top {
+    gap: 4px;
+  }
+  .traj-cols {
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 4px;
+  }
+  .row {
+    gap: 4px;
+  }
+  /*
+   * Flt.PFD: the ball keeps the width it has with the full panel (56 % of a 954 px panel's page)
+   * and the readouts take what is left: long labels end in an ellipsis and what does not fit is cut.
+   */
+  .page.pfd {
+    gap: 4px;
+  }
+  .pfd-adi {
+    flex: 0 0 160px;
+  }
+  .pfd-side {
+    flex: 1 1 0;
+  }
+  .pfd-side .row {
+    grid-template-columns: minmax(0, 1fr) auto 22px;
+  }
+  .pfd-side .row > :first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .adi-head,
+  .adi-foot {
+    gap: 4px;
+  }
+  /* F1–F4 stay in one row. */
+  .switch-panel {
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .plate {
+    min-width: 0;
+    padding: 15px 3px 5px;
+  }
+  .sw {
+    min-width: 0;
+    padding: 2px 0;
+  }
+  .lever {
+    width: 32px;
+    height: 32px;
+  }
+  .guard {
+    width: 50px;
+  }
+  .guard-frame {
+    padding: 3px;
+  }
+  .guard:not(.up) + .lever-btn.fire::after {
+    top: 20px;
+  }
+  .fc {
+    gap: 4px;
+  }
+  .fc-axis {
+    grid-template-columns: max-content 20px 20px;
+  }
+  .bottom-row {
+    gap: 6px;
+  }
+}
+
+/*
+ * ---------- Narrow views (narrow windows, where the panel takes most of the width) ----------
+ * Below 640 px the toolbars, the map HUD, the help lines and the color legend would cover the
+ * map and the 3D scene: they leave the overlay and get their own rows (toolbar above, HUD and
+ * help below, legend at the foot), and the Earth/Moon-vicinity inset goes under the 3D scene.
+ * Font sizes do not change. The map framing reads the pads (scene.ts) and drops them here.
+ */
+@container view (max-width: 639px) {
+  .view {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+  .pane {
+    display: flex;
+    flex-direction: column;
+  }
+  .pane-2d {
+    --map-pad-top: 0;
+    --map-pad-bottom: 0;
+  }
+  .pane > .toolbar {
+    order: 0;
+    position: static;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--c-label-faint);
+  }
+  .pane > .view-canvas-host {
+    order: 1;
+    position: relative;
+    inset: auto;
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .pane-3d > .view-canvas-host {
+    right: auto;
+  }
+  .pane-2d > .map-hud {
+    order: 2;
+    position: static;
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    gap: 3px 6px;
+    padding: 4px 6px;
+    border: 0;
+    border-top: 1px solid var(--c-label-faint);
+    background: var(--c-screen);
+  }
+  .pane-2d .hud-cell {
+    min-width: 0;
+  }
+  .pane-2d .hud-l {
+    white-space: normal;
+  }
+  .tb-group {
+    flex-wrap: wrap;
+  }
+  /* The propellant cell has the longest label: a whole row, so it stays on one line. */
+  .pane-2d .hud-cell:last-child {
+    grid-column: 1 / -1;
+  }
+  /* 3D: toolbar, scene and help on the left, the inset in its own full-height column. */
+  .pane-3d {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--inset-w);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .pane-3d > .toolbar {
+    grid-area: 1 / 1;
+  }
+  .pane-3d > .view-canvas-host {
+    grid-area: 2 / 1;
+  }
+  .pane-3d > .legend {
+    grid-area: 3 / 1;
+  }
+  .map-inset {
+    grid-area: 1 / 2 / 4 / 3;
+    position: relative;
+    inset: auto;
+    width: auto;
+  }
+  .pane > .legend:not(.legend-colors),
+  .pane-2d .legend:not(.legend-colors),
+  .pane-3d .legend {
+    order: 3;
+    position: static;
+    max-width: none;
+    padding: 2px 8px 4px;
+    text-align: left;
+    background: var(--c-screen);
+  }
+  .legend-colors {
+    position: static;
+    grid-row: 3;
+    padding: 4px 8px;
+    gap: 2px 10px;
+    border-top: 2px solid var(--c-frame);
+  }
+  /* Very narrow: the inset goes under the 3D scene, at full width. */
+  @container view (max-width: 399px) {
+    .pane-3d {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1.4fr) minmax(0, 1fr) auto;
+    }
+    .map-inset {
+      grid-area: 3 / 1;
+      border-left: 0;
+      border-top: 2px solid var(--c-frame);
+    }
+    .pane-3d > .legend {
+      grid-area: 4 / 1;
+    }
+  }
 }
