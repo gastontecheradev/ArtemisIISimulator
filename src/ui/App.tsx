@@ -18,8 +18,7 @@ import { useT } from './i18n';
 import { act, setCamera, setGuide, setTour, useGuide, useIntro, usePanelUi, useSim, useTour } from './store';
 import { Tour } from './tutorial/Tour';
 
-/** Minimum panel widths to show two or three Display Units (the real cockpit has three). */
-const TWO_DU_MIN_WIDTH = 860;
+/** Minimum panel width to show a third Display Unit (the real cockpit has three). */
 const THREE_DU_MIN_WIDTH = 1280;
 
 /** Keyboard shortcuts. All of them go through the same commands as the panel controls. */
@@ -86,38 +85,38 @@ export function App(): JSX.Element {
   const tour = useTour();
   const guide = useGuide();
   const lampTest = usePanelUi().lampTest;
-  const panelRef = useRef<HTMLElement>(null);
-  const [units, setUnits] = useState(1);
+  const columnRef = useRef<HTMLElement>(null);
+  const [units, setUnits] = useState<2 | 3>(2);
   const [credits, setCredits] = useState(false);
   useKeyboard(intro === null && !credits && !guide);
 
   useEffect(() => {
-    const el = panelRef.current;
+    const el = columnRef.current;
     if (!el) return;
-    const observer = new ResizeObserver(() =>
-      setUnits(el.clientWidth >= THREE_DU_MIN_WIDTH ? 3 : el.clientWidth >= TWO_DU_MIN_WIDTH ? 2 : 1),
-    );
+    const observer = new ResizeObserver(() => setUnits(el.clientWidth >= THREE_DU_MIN_WIDTH ? 3 : 2));
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
   return (
     <div className="app">
-      <aside className={lampTest ? 'panel lamp-test' : 'panel'} ref={panelRef}>
-        <StatusBar s={s} />
-        <div className="du-row">
-          {/* Alone: PFD and Procs. With two displays (Gastón's layout): Traj/TL on the left and PFD/Prop on the right. */}
-          <DisplayUnit key={units >= 2 ? 'du0-wide' : 'du0'} s={s} index={0} initial={units >= 2 ? ['TRAJ', 'TL'] : ['PFD', 'PROCS']} />
-          {units >= 2 && <DisplayUnit s={s} index={1} initial={['PFD', 'PROP']} />}
-          {units >= 3 && <DisplayUnit s={s} index={2} initial={['SUM', 'FAULT']} />}
+      <aside className="panel-col" ref={columnRef}>
+        <div className={lampTest ? 'panel lamp-test' : 'panel'}>
+          <StatusBar s={s} />
+          <div className="du-row">
+            {/* Gastón's layout: Traj/TL on the left and PFD/Prop on the right; Sum/Fault on the third. */}
+            <DisplayUnit s={s} index={0} initial={['TRAJ', 'TL']} />
+            <DisplayUnit s={s} index={1} initial={['PFD', 'PROP']} />
+            {units >= 3 && <DisplayUnit s={s} index={2} initial={['SUM', 'FAULT']} />}
+          </div>
+          <SwitchPanel s={s} />
+          <div className="bottom-row">
+            <TimeControls s={s} />
+            <Capcom s={s} />
+            <EventLog s={s} />
+          </div>
+          <p className="panel-note">{t('panel.conceptual')}</p>
         </div>
-        <SwitchPanel s={s} />
-        <div className="bottom-row">
-          <TimeControls s={s} />
-          <Capcom s={s} />
-          <EventLog s={s} />
-        </div>
-        <p className="panel-note">{t('panel.conceptual')}</p>
       </aside>
       <main className="view">
         <TrajectoryView onCredits={() => setCredits(true)} onTutorial={() => setTour(0)} onGuides={() => setGuide('objective')} />

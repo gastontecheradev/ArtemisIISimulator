@@ -65,10 +65,14 @@ const SWATCHES: Swatch[] = [
   // Untextured bodies (mission map), until NASA textures are chosen
   { name: 'body-earth', image: '1.png', box: [0.12, 0.25, 0.2, 0.4], pick: 'blue', top: 0.3, note: "Earth's ocean" },
   { name: 'body-moon', image: '1.png', box: [0.705, 0.56, 0.74, 0.61], pick: 'median', note: "Moon's surface" },
-  // Orion 3D model (Orion illustration)
+  // Orion 3D model (Orion illustration). The solar cells, the adapter metal and the docking
+  // system gold come from the exploded view of Orion and SLS (the cells of the Orion
+  // illustration are seen at a grazing angle and gave a grayish blue).
   { name: 'ship-hull', image: '4.png', box: [0.6, 0.38, 0.65, 0.43], pick: 'bright', top: 0.1, note: 'white hull' },
   { name: 'ship-dark', image: '4.png', box: [0.665, 0.755, 0.69, 0.785], pick: 'dark', top: 0.3, note: 'nozzle and heat shield' },
-  { name: 'ship-solar', image: '4.png', box: [0.72, 0.55, 0.82, 0.67], pick: 'blue', top: 0.1, note: 'solar array cells' },
+  { name: 'ship-solar', image: '14.png', box: [0.398, 0.3, 0.425, 0.355], pick: 'median', note: 'solar array cells' },
+  { name: 'ship-metal', image: '14.png', box: [0.54, 0.455, 0.585, 0.5], pick: 'median', note: 'spacecraft adapter metal' },
+  { name: 'ship-gold', image: '14.png', box: [0.575, 0.035, 0.615, 0.06], pick: 'yellow', top: 0.1, note: 'docking system gold' },
   { name: 'ship-core', image: '3.png', box: [0.3, 0.3, 0.42, 0.45], pick: 'orange', top: 0.05, note: 'rocket core stage' },
   // Trail by network (network map)
   { name: 'net-nsn', image: '2.png', box: [0.123, 0.585, 0.17, 0.655], pick: 'green', note: 'Near Space Network' },
