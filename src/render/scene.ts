@@ -108,6 +108,20 @@ const SHIP_DEPTH_KM = 50;
  */
 const WAKE_SHIP_LENGTHS = 3;
 
+/**
+ * Zoom of the spacecraft camera (drawing choice): each wheel step multiplies the distance by
+ * ~1.05, so going from meters to thousands of km took hundreds of steps. While the spacecraft is
+ * at least ZOOM_SHIP_PX_SLOW px long the zoom keeps its normal speed; as it shrinks to
+ * ZOOM_SHIP_PX_FAST px (almost a dot) it speeds up (log-interpolated) to ZOOM_FAST times.
+ */
+const ZOOM_SHIP_PX_SLOW = 180;
+const ZOOM_SHIP_PX_FAST = 18;
+const ZOOM_FAST = 3;
+const shipZoomSpeed = (shipPx: number): number => {
+  const k = Math.log(ZOOM_SHIP_PX_SLOW / Math.max(shipPx, 1e-9)) / Math.log(ZOOM_SHIP_PX_SLOW / ZOOM_SHIP_PX_FAST);
+  return 1 + (ZOOM_FAST - 1) * Math.min(1, Math.max(0, k));
+};
+
 const NO_MARKERS: readonly Marker[] = [];
 
 /** Time constant (real s) with which the spacecraft drawing turns towards its heading. */
@@ -576,6 +590,10 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     }
     // The numbered event markers stay on the map and the inset: in 3D they piled up on the horizon.
     overlay.setMarkers(is3d ? NO_MARKERS : s.markers, eventNames);
+    if (is3d) {
+      const shipPxNow = (shipLengthM * M_TO_SCENE * Math.min(width, height)) / 2 / viewRadiusScene;
+      rig.setZoomSpeed(shipCamera3d ? shipZoomSpeed(shipPxNow) : 1);
+    }
     rig.update();
     if (is3d) {
       // The camera never ends up inside a body (at real scale, near the spacecraft in

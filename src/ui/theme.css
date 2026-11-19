@@ -45,16 +45,22 @@
  * for shadows, highlights and dimmed text. No new hues are added.
  */
 :root {
-  --c-panel-hi: color-mix(in srgb, var(--c-panel) 85%, white);
-  --c-panel-lo: color-mix(in srgb, var(--c-panel) 55%, black);
-  --c-frame: color-mix(in srgb, var(--c-panel) 32%, black);
+  /*
+   * Panel metal (session 35, Gastón): a modern dark-mode blue gray. The dark slate of the
+   * close-up's labeled bezel key, lightened with white; a soft gradient around it.
+   * (--c-panel, the gray of the first cockpit photo, is kept in the palette but no longer used.)
+   */
+  --c-metal: color-mix(in srgb, var(--c-key-label) 85%, white);
+  --c-panel-hi: color-mix(in srgb, var(--c-metal) 92%, white);
+  --c-panel-lo: color-mix(in srgb, var(--c-metal) 85%, black);
+  --c-frame: color-mix(in srgb, var(--c-metal) 45%, black);
   /* Bezel keys: the photo's keys are nearly black; the lit edge is a mix with white. */
   --c-key-hi: color-mix(in srgb, var(--c-key-label) 70%, white);
   --c-key-lo: color-mix(in srgb, var(--c-key) 60%, black);
   --c-bezel-hi: color-mix(in srgb, var(--c-bezel) 82%, white);
-  /* Display bezel body: dark gray from the panel metal, between the old gray and the photo's near black. */
-  --c-bezel-body: color-mix(in srgb, var(--c-panel) 48%, black);
-  --c-bezel-body-hi: color-mix(in srgb, var(--c-panel) 68%, black);
+  /* Display bezel body: the panel metal darkened. */
+  --c-bezel-body: color-mix(in srgb, var(--c-metal) 62%, black);
+  --c-bezel-body-hi: color-mix(in srgb, var(--c-metal) 72%, black);
   /* Selected or active (tab, mode, running engine): the green of the PFD's selected keys and scales. */
   --c-on: var(--c-adi-ship);
   --c-softkey-on-hi: color-mix(in srgb, var(--c-softkey-on) 55%, white);
