@@ -117,6 +117,18 @@ export const LAUNCH_DECK_HEIGHT = 47 * FT_TO_KM; // 14.33 m
 export const SUPPORT_POST_HEIGHT = 5 * FT_TO_KM; // 1.52 m
 export const PAD_ELEVATION = 55 * FT_TO_KM; // 16.76 m
 export const LAUNCH_SITE_HEIGHT = PAD_ELEVATION + LAUNCH_DECK_HEIGHT + SUPPORT_POST_HEIGHT; // 32.61 m (107 ft)
+/**
+ * Shape of the elevated pad as the 3D view draws it (km), around the simulated launch point.
+ * **Unverified assumption**, a placeholder: a round flat top at PAD_ELEVATION and a smooth slope
+ * down to the surrounding ground, which is taken at mean sea level (the model's sphere; the
+ * stage-0 photo shows the pad surface ~12–16 m above the grass, consistent). The top holds the
+ * Mobile Launcher base (50.3 × 41.1 m [ML1], 32.5 m half-diagonal) with margin, and the slope ends
+ * before the lightning masts (131–159 m from the ML center, OpenStreetMap; launch plan, §2). No
+ * source gives the outline of the hardstand: the crawlerway ramp and the flame trench are not
+ * drawn, and the ground layout is generic (D6). The physics does not use these values.
+ */
+export const PAD_TOP_RADIUS = 0.06; // km
+export const PAD_SLOPE_RUN = 0.05; // km
 
 const hms = (h: number, m: number, s: number): number => h * 3600 + m * 60 + s;
 const dhms = (d: number, h: number, m: number, s: number): number => d * 86400 + hms(h, m, s);

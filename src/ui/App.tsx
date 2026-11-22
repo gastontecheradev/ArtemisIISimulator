@@ -68,7 +68,7 @@ function useKeyboard(enabled: boolean): void {
       } else if (e.key === '+' || e.key === '=' || e.key === '.') step(1);
       else if (e.key === '-' || e.key === ',') step(-1);
       else if (e.key === 'a' || e.key === 'A') act(ackAlarms);
-      else if (/^[1-5]$/.test(e.key)) setCamera('3d', CAMERA_MODES[Number(e.key) - 1]);
+      else if (/^[1-6]$/.test(e.key)) setCamera('3d', CAMERA_MODES[Number(e.key) - 1]);
     };
     const onUp = (e: KeyboardEvent): void => {
       if (!typing(e)) hold(e, false);

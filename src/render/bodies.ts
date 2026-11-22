@@ -12,7 +12,9 @@ import {
   R_MOON,
 } from '../sim/constants';
 import { Vec3 } from '../sim/math/vec3';
+import type { Haze } from './atmosphere';
 import { EARTH_DETAIL } from './earthDetail';
+import { GROUND_RADIUS_M } from './padGround';
 import { KM_TO_SCENE } from './worldToScene';
 
 /** Earth's own glow in 3D (fraction of its color), only so the night side is visible. */
@@ -34,8 +36,98 @@ export interface BodyMeshes {
   readonly soiRing: THREE.Line;
   /** In 3D the bodies are lit by the "Sun"; in 2D they are flat disks. */
   setLit(on: boolean): void;
+  /** Earth writing only its depth (for the spacecraft pass), with the same hole as Earth. */
+  readonly earthDepthMaterial: THREE.Material;
+  /** Earth's lit material for the pad's ground (padGround.ts), or null without `padCentered`. */
+  readonly groundMaterial: THREE.Material | null;
   dispose(): void;
 }
+
+/**
+ * Sphere sampled on rings around a pole, with the vertex layout and triangles of
+ * THREE.SphereGeometry (pole on +y, vertex (i, j) at polar angle `thetas[i]` and azimuth 2πj/sectors,
+ * x = −cos φ sin θ, z = sin φ sin θ). In double precision, so tests can measure the geometry as
+ * designed; `thetas` goes from 0 to π.
+ */
+export function latLongSphere(thetas: readonly number[], sectors: number): { positions: Float64Array; index: Uint32Array } {
+  const cols = sectors + 1;
+  const positions = new Float64Array(thetas.length * cols * 3);
+  let k = 0;
+  for (const theta of thetas) {
+    for (let j = 0; j < cols; j++) {
+      const phi = (2 * Math.PI * j) / sectors;
+      positions[k++] = -Math.cos(phi) * Math.sin(theta);
+      positions[k++] = Math.cos(theta);
+      positions[k++] = Math.sin(phi) * Math.sin(theta);
+    }
+  }
+  const index: number[] = [];
+  const last = thetas.length - 2;
+  for (let i = 0; i <= last; i++) {
+    for (let j = 0; j < sectors; j++) {
+      const a = i * cols + j + 1;
+      const b = i * cols + j;
+      const c = (i + 1) * cols + j;
+      const d = (i + 1) * cols + j + 1;
+      if (i !== 0) index.push(a, b, d);
+      if (i !== last) index.push(b, c, d);
+    }
+  }
+  return { positions, index: Uint32Array.from(index) };
+}
+
+/** Sectors of the pad-centered Earth mesh. */
+export const PAD_SPHERE_SECTORS = 256;
+
+/**
+ * Polar angles (rad) of the rings of the pad-centered Earth mesh (launch plan, §4.2): the first ring
+ * 10 m from the pad, each one 8 % farther from the previous until the spacing reaches 0.5°, and
+ * uniform from there to the antipode. The chord error stays at ~1 cm 10 km from the pad, where the
+ * old sphere (facets of 1.875°) dropped 16 m per km, and below the old sphere's everywhere else.
+ */
+export function padSphereRings(): number[] {
+  const first = 0.01 / R_EARTH;
+  const max = (0.5 * Math.PI) / 180;
+  const thetas = [0];
+  let theta = 0;
+  for (let step = first; step < max; step *= 1.08) {
+    theta += step;
+    thetas.push(theta);
+  }
+  const n = Math.ceil((Math.PI - theta) / max);
+  for (let k = 1; k <= n; k++) thetas.push(k === n ? Math.PI : theta + ((Math.PI - theta) * k) / n);
+  return thetas;
+}
+
+/**
+ * Earth mesh for the 3D view: a unit sphere with its pole on the pad (local +y, where the Earth
+ * mesh always has the launch site; scene.ts turns it with the pad). Fine near the pad and coarse
+ * far from it. Normals are the positions; the texture does not use the UVs (see sampleGeographic).
+ */
+export function padSphereGeometry(): THREE.BufferGeometry {
+  const { positions, index } = latLongSphere(padSphereRings(), PAD_SPHERE_SECTORS);
+  const p32 = Float32Array.from(positions);
+  const n = p32.length / 3;
+  const uv = new Float32Array(n * 2);
+  const cols = PAD_SPHERE_SECTORS + 1;
+  for (let k = 0; k < n; k++) {
+    uv[2 * k] = (k % cols) / PAD_SPHERE_SECTORS;
+    uv[2 * k + 1] = 1 - Math.acos(Math.max(-1, Math.min(1, positions[3 * k + 1]))) / Math.PI;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(p32, 3));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(Float32Array.from(p32), 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geometry.setIndex(new THREE.BufferAttribute(index, 1));
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+/**
+ * sin² of the angle, seen from Earth's center, of the circle around the pad where Earth discards
+ * its fragments: the pad's own ground (padGround.ts) is drawn there.
+ */
+const HOLE_SIN2 = Math.sin(GROUND_RADIUS_M / 1000 / R_EARTH) ** 2;
 
 function circle(radius: number, segments: number, closed: boolean): THREE.BufferGeometry {
   const pts: THREE.Vector3[] = [];
@@ -71,7 +163,7 @@ interface DetailUniforms {
  * and local +z the plane's normal. Geographic axes: x towards (0°, 0°), y towards
  * (0°, 90° E), z the north pole.
  */
-function earthGeoMatrix(): THREE.Matrix3 {
+export function earthGeoMatrix(): THREE.Matrix3 {
   const rad = Math.PI / 180;
   const lat = LAUNCH_LATITUDE_DEG * rad;
   const lon = LAUNCH_LONGITUDE_DEG * rad;
@@ -93,17 +185,42 @@ function earthGeoMatrix(): THREE.Matrix3 {
  * across the seam with the smaller jump (Tarini's method), so no line appears there.
  * Inside the pad patch (`detail`, once loaded) the texture comes from the patch, fading
  * into the global one over the last `fade` degrees of its edge.
+ * `dir` says where each vertex's direction in Earth-mesh local axes comes from: the position (Earth)
+ * or the `geoDir` attribute (the pad's ground). With `hole`, the fragments inside the pad's ground
+ * circle are discarded (the test uses the horizontal components, which keep their precision there).
  */
-function sampleGeographic(material: THREE.Material, geo: THREE.Matrix3, detail: DetailUniforms): void {
+function sampleGeographic(
+  material: THREE.Material,
+  geo: THREE.Matrix3,
+  detail: DetailUniforms,
+  opts: { dir: 'position' | 'geoDir'; hole: boolean; haze?: Haze } = { dir: 'position', hole: false },
+): void {
+  // Each variant needs its own program: by default Three keys it on this function's source text.
+  material.customProgramCacheKey = () => `geographic|${opts.dir}|${opts.hole}|${opts.haze ? 'haze' : ''}`;
+  const haze = opts.haze;
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, { uGeo: { value: geo }, ...detail });
+    Object.assign(shader.uniforms, { uGeo: { value: geo }, ...detail }, haze?.uniforms ?? {});
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vGeoDir;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGeoDir = position;');
+      .replace(
+        '#include <common>',
+        `#include <common>\nvarying vec3 vGeoDir;${opts.dir === 'geoDir' ? '\nattribute vec3 geoDir;' : ''}${haze ? '\nvarying vec3 vHazeWorld;' : ''}`,
+      )
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvGeoDir = ${opts.dir};`)
+      .replace('#include <project_vertex>', `#include <project_vertex>${haze ? '\nvHazeWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;' : ''}`);
     shader.fragmentShader = shader.fragmentShader
+      // Drawn after the atmosphere, the surface hazes itself (atmosphere.ts).
+      .replace('#include <colorspace_fragment>', haze ? `#include <colorspace_fragment>\n${haze.apply}` : '#include <colorspace_fragment>')
+      .replace(
+        '#include <clipping_planes_fragment>',
+        opts.hole
+          ? `#include <clipping_planes_fragment>
+          if (vGeoDir.y > 0.0 && dot(vGeoDir.xz, vGeoDir.xz) < ${HOLE_SIN2.toExponential(10)} * dot(vGeoDir, vGeoDir)) discard;`
+          : '#include <clipping_planes_fragment>',
+      )
       .replace(
         '#include <common>',
         `#include <common>
+        ${haze ? `varying vec3 vHazeWorld;\n${haze.head}` : ''}
         varying vec3 vGeoDir;
         uniform mat3 uGeo;
         uniform sampler2D uDetail;
@@ -145,18 +262,24 @@ function sampleGeographic(material: THREE.Material, geo: THREE.Matrix3, detail: 
  * Earth and Moon, plus the geometric references that do not depend on images. With
  * `textures` (only the 3D view) they wear the NASA maps (Blue Marble, CGI Moon Kit);
  * until those load, and on the 2D map and the inset, they are plain-colored spheres.
+ * With `pad` (only the 3D view) Earth uses the pad-centered mesh, leaves a hole where the pad's own
+ * ground goes, and offers the material for that ground, which adds the atmosphere's `haze` itself
+ * (it is drawn after the atmosphere).
  */
 export function createBodies(
   colors: { earth: string; moon: string; orbit: string; ei: string },
   /** 2D map: lightened Moon (mixed with white, no new hues) and a more visible orbit. */
   contrast = false,
   textures: BodyTextures | null = null,
+  pad: { haze: Haze } | null = null,
 ): BodyMeshes {
+  const padCentered = pad !== null;
   const group = new THREE.Group();
   const moonColor = contrast ? `#${new THREE.Color(colors.moon).lerp(new THREE.Color(0xffffff), 0.35).getHexString()}` : colors.moon;
   const geometry = new THREE.SphereGeometry(1, 192, 96);
   // The sphere's poles lie along z (perpendicular to the orbital plane).
   geometry.rotateX(Math.PI / 2);
+  const earthGeometry = padCentered ? padSphereGeometry() : geometry;
 
   const lighten = (color: string, k: number): string => `#${new THREE.Color(color).lerp(new THREE.Color(0xffffff), k).getHexString()}`;
   const make = (color: string, glow = 0, dayLift = 0): { flat: THREE.MeshBasicMaterial; lit: THREE.MeshStandardMaterial } => ({
@@ -168,7 +291,10 @@ export function createBodies(
   // new hues) so the terminator reads. Not the Moon: its dark side stays dark.
   const earthMat = make(colors.earth, EARTH_NIGHT_GLOW, EARTH_DAY_LIFT);
   const moonMat = make(moonColor);
-  const earth: THREE.Mesh = new THREE.Mesh(geometry, earthMat.flat);
+  // The pad's ground: the same lit material as Earth, so the two blend at its edge.
+  const groundMat = padCentered ? make(colors.earth, EARTH_NIGHT_GLOW, EARTH_DAY_LIFT).lit : null;
+  const earthDepthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
+  const earth: THREE.Mesh = new THREE.Mesh(earthGeometry, earthMat.flat);
   const moon: THREE.Mesh = new THREE.Mesh(geometry, moonMat.flat);
 
   // NASA textures: WebP, with the JPG fallback if the browser does not decode it. On
@@ -200,10 +326,13 @@ export function createBodies(
     uDetailFade: { value: EARTH_DETAIL.fade * rad },
     uDetailOn: { value: 0 },
   };
-  if (textures) {
+  if (textures || padCentered) {
     const geo = earthGeoMatrix();
-    sampleGeographic(earthMat.flat, geo, detail);
-    sampleGeographic(earthMat.lit, geo, detail);
+    const opts = { dir: 'position', hole: padCentered } as const;
+    sampleGeographic(earthMat.flat, geo, detail, opts);
+    sampleGeographic(earthMat.lit, geo, detail, opts);
+    if (padCentered) sampleGeographic(earthDepthMaterial, geo, detail, opts);
+    if (groundMat && pad) sampleGeographic(groundMat, geo, detail, { dir: 'geoDir', hole: false, haze: pad.haze });
   }
   const size = textures?.size ?? '2k';
   if (textures?.detail) {
@@ -213,12 +342,13 @@ export function createBodies(
     });
   }
   load(`earth-day-${size}`, (texture) => {
-    for (const m of [earthMat.flat, earthMat.lit]) {
+    for (const m of [earthMat.flat, earthMat.lit, ...(groundMat ? [groundMat] : [])]) {
       m.map = texture;
       m.color.set(0xffffff);
       m.needsUpdate = true;
     }
     earthMat.lit.emissive.set(0xffffff);
+    groundMat?.emissive.set(0xffffff);
   });
   load(`moon-color-${size}`, (texture) => {
     for (const m of [moonMat.flat, moonMat.lit]) {
@@ -266,11 +396,14 @@ export function createBodies(
       earth.material = on ? earthMat.lit : earthMat.flat;
       moon.material = on ? moonMat.lit : moonMat.flat;
     },
+    earthDepthMaterial,
+    groundMaterial: groundMat,
     dispose() {
       disposed = true;
       for (const t of loaded) t.dispose();
-      for (const g of [geometry, orbitGeometry, eiGeometry, soiGeometry]) g.dispose();
-      for (const m of [orbitMaterial, eiMaterial, soiMaterial]) m.dispose();
+      for (const g of new Set([geometry, earthGeometry, orbitGeometry, eiGeometry, soiGeometry])) g.dispose();
+      for (const m of [orbitMaterial, eiMaterial, soiMaterial, earthDepthMaterial]) m.dispose();
+      groundMat?.dispose();
       for (const m of [earthMat, moonMat]) {
         m.flat.dispose();
         m.lit.dispose();

@@ -106,7 +106,7 @@ const pick = <T extends string>(key: string, options: readonly T[], fallback: T)
   return options.includes(v as T) ? (v as T) : fallback;
 };
 
-const CAMERAS = ['auto', 'overview', 'ship', 'earth', 'moon'] as const;
+const CAMERAS = ['auto', 'overview', 'ship', 'earth', 'moon', 'pad'] as const;
 
 /** Settings shared by both views, plus each one's camera. */
 export interface ViewState {
@@ -114,7 +114,7 @@ export interface ViewState {
   readonly camera: Readonly<Record<ViewDim, CameraMode>>;
 }
 
-// Also via URL: ?cam3d=earth, ?map=inertial (2D map only).
+// Also via URL: ?cam3d=earth (or pad, the pad camera), ?map=inertial (2D map only).
 const view = createValue<ViewState>({
   mapFrame: pick('map', ['inertial', 'rotating'] as const, 'rotating'),
   camera: { '2d': 'overview', '3d': pick('cam3d', CAMERAS, 'auto'), inset: 'earth' },

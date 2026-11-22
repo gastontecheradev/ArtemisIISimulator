@@ -1,7 +1,7 @@
 # Plan: lanzamiento desde la plataforma
 
 **Pedido (Gastón, sesión 40):** planificar el lanzamiento del cohete desde la base, con el modelo 3D de la plataforma, las animaciones de la nave y de la base, el humo, la información y los controles del panel, el tutorial y los demás lugares que toca la funcionalidad. También evaluar cómo mejorar la textura del terreno cercano.
-**Fecha:** 2026-11-21. **Estado:** etapa 1 (cuenta final) hecha en la sesión 41; lo que cambió al implementarla está en la decisión 45 de `process.md`. Etapa 0 casi completa en la sesión 42 (imágenes, elevación y brazos de la torre medidos; faltan las posiciones en el suelo, ver §2). Decisiones D1–D9 tomadas: Gastón aceptó todas las recomendaciones (sesión 40).
+**Fecha:** 2026-11-21. **Estado:** etapa 1 (cuenta final) hecha en la sesión 41; lo que cambió al implementarla está en la decisión 45 de `process.md`. Etapa 0 completa en la sesión 42 (imágenes, elevación, brazos de la torre medidos y posiciones en el suelo de OpenStreetMap, ver §2). Etapa 2 (suelo y cámara PLATAFORMA) hecha en la sesión 43; lo que cambió respecto de §4.2 y §4.6 está en la decisión 47 de `process.md`. Decisiones D1–D9 tomadas: Gastón aceptó todas las recomendaciones (sesión 40).
 **Cómo se armó:** se leyó el código (`sim/state.ts`, `sim/advance.ts`, `sim/capcom.ts`, `render/scene.ts`, `render/bodies.ts`, `render/earthDetail.ts`, `render/vehicle.ts`, `render/wake.ts`, `ui/tutorial/steps.tsx`, `ui/panel/pages/index.ts`). Se muestreó la textura `earth-day-pad` en LC‑39B y se leyeron la hoja de datos del Mobile Launcher 1 de NASA y la página de NASA con la cuenta final de Artemis II. No hay capturas, porque esta copia del proyecto no tiene `node_modules` (falta correr `npm install`).
 
 Lo que se lee directo de una fuente va sin marca. Lo que es interpretación va marcado *(interpretación)* y lo que es elección de dibujo, *(elección de dibujo)*.
@@ -128,8 +128,9 @@ Gastón dejó nueve imágenes en `docs/reference/launch/` (fuera de git, como el
 | Archivo | Qué es | Origen |
 |---|---|---|
 | `LC‑39B-cenital-1.jpg`, `-2`, `-3` (ya no están) | Vistas satelitales del Cabo, de la plataforma y del complejo | Capturas de Google Maps ("© 2026 Google"). Gastón las sacó al decidir usar una foto aérea de NASA |
-| `39-B.jpg` | Vista de mapa del complejo (544 × 448) | Sin metadatos; por el estilo y el marcador parece de Google Maps |
+| `39-B.jpg` | Vista de mapa del complejo (544 × 448) | Sin metadatos. No es de Google Maps (lo aclaró Gastón); origen y licencia por confirmar |
 | `39B-Draw.jpg` | Ilustración del despegue en LC‑39B (1.010 × 526) | Sin metadatos; autor desconocido |
+| `39-B-2.jpg` | Plano tipo "blueprint" de LC‑39B con logo de NASA (1.408 × 768) | Sin metadatos. **No se usa**: contradice a las fuentes primarias y a las fotos (4 pararrayos en vez de 3, 2 torres de agua en vez de 1, foso de 137 m en vez de 174 m, tanque de LH2 de 850.000 galones en vez de ~1,25 millones) y tiene rótulos deformados ("9θm", "(3x 1β3m)") y cotas contradictorias, marcas típicas de una imagen generada por IA |
 | `ML-1-image-1.jpg` | El SLS en la plataforma visto desde lo alto de un pararrayos, con el océano al fondo | Sin metadatos; parece de NASA |
 | `ML-1-image-2.jpg` | El SLS de Artemis II (logo de la misión en el booster) al amanecer, de costado y con teleobjetivo: casi sin perspectiva | Sin metadatos; parece de NASA |
 | `ML1-image-3.jpg` | El SLS en la plataforma desde el pasto, con el talud y una boca del foso | Sin metadatos; parece de NASA |
@@ -162,13 +163,30 @@ Conclusión: **no hay que mover las estaciones del cohete.** Las diferencias de 
 
 **Disposición, de las imágenes sin escala** (cualitativo): tres pararrayos alrededor de la plataforma; la torre de agua al costado del ML, del lado opuesto al de la nube; una esfera blanca (tanque) más lejos; la nube del despegue sale hacia el lado del foso (norte, [39B]) y el crawlerway llega desde el sur (`39B-Draw.jpg`, `39-B.jpg`, `launch-1.jpg`).
 
-**Pendiente: posiciones y trazado del suelo.** Las posiciones de los pararrayos, la torre de agua y los tanques, la rampa, el cerco y el trazado del suelo (D6) necesitan una vista cenital con escala. Las tres primeras eran capturas satelitales de Google Maps; hasta donde sé, los términos de Google no permiten crear contenido a partir de sus imágenes (calcar caminos o edificios), y el trazado iría dentro de la app. **Gastón eligió una foto aérea de NASA** (sesión 42). Las dos imágenes que agregó después no lo son: `39-B.jpg` es una vista de mapa, que por el estilo parece de Google Maps, y `39B-Draw.jpg` es una ilustración sin escala. No se midió nada en ellas. Sigue faltando la foto cenital de NASA de LC‑39B (búsqueda sugerida en images.nasa.gov: "Launch Pad 39B aerial" o "Launch Complex 39B overhead").
+**Posiciones en el suelo: OpenStreetMap** ([OSM]; consulta a la API Overpass, datos del 22/11/2026 01:40 UTC, licencia ODbL). Gastón no encontró una foto cenital de NASA y eligió usar OpenStreetMap **solo para las posiciones**, con el crédito *"Datos de posición © colaboradores de OpenStreetMap (ODbL)"* en los Créditos cuando entren a la app (etapa 3). El trazado del suelo (D6) no se calca: queda genérico. Lo mapeado en OpenStreetMap está calcado, en buena parte, de ortofotos de USGS (NAIP) y de Bing.
+
+Origen local: el centro de los seis apoyos del ML (`man_made=mast`, `tower:type=portal`: 28,6272154° N, 80,6208577° O). Los apoyos ocupan 40,3 m de este a oeste y 48,9 m de norte a sur ([ML1]: base de 41,1 × 50,3 m; coincide). No son simétricos: hay dos a +26 m, dos a −4 m y dos a −22 m al norte del centro; dónde queda el cohete sobre la base se resuelve en la etapa 3. Metros por grado: 110.830 de latitud y 97.787 de longitud.
+
+| Elemento (id en OpenStreetMap) | Este | Norte | Distancia | Rumbo | Otros datos de OpenStreetMap |
+|---|---|---|---|---|---|
+| Pararrayos 1 (node 3281217398) | −102,9 m | −118,3 m | 156,8 m | 221° | 183 m (torre de 146,4 m + mástil); [39B]: 600 ft = 182,9 m |
+| Pararrayos 2 (node 3281217399) | +125,1 m | +38,3 m | 130,8 m | 73° | ídem |
+| Pararrayos 3 (node 3281217400) | −144,0 m | +66,9 m | 158,8 m | 295° | ídem |
+| Torre de agua (node 8651215902) | +101,7 m | +114,5 m | 153,1 m | 42° | 80,5 m hasta el tanque y 88 m con el domo (sin fuente primaria) |
+| Tanque de LH2 (way 153128950) | +372,9 m | +227,7 m | 436,9 m | 59° | "Liquid Hydrogen tank" |
+| Tanque de LH2 (way 901620453) | +236,7 m | +319,4 m | 397,5 m | 37° | probablemente el nuevo de ~1,25 millones de galones ([39B]); sin confirmar |
+| Tanque de LOX (way 153128951) | −398,5 m | +244,6 m | 467,5 m | 302° | "Liquid Oxygen tank" |
+
+Controles: los tres pararrayos y la torre de agua coinciden con las fotos (en `launch-1`, tomada desde el sur‑sudoeste, la torre de agua queda a la derecha del cohete y más atrás). Las coordenadas de LC‑39B del modelo (`LAUNCH_LATITUDE_DEG`, `LAUNCH_LONGITUDE_DEG`, de Wikipedia) caen a 27,6 m del centro de los apoyos: no se cambian, porque solo apoyan la textura de la Tierra.
+
+**Historia de la vista cenital:** Las posiciones de los pararrayos, la torre de agua y los tanques, la rampa, el cerco y el trazado del suelo (D6) necesitan una vista cenital con escala. Las tres primeras eran capturas satelitales de Google Maps; hasta donde sé, los términos de Google no permiten crear contenido a partir de sus imágenes (calcar caminos o edificios), y el trazado iría dentro de la app. **Gastón eligió una foto aérea de NASA** (sesión 42). Las dos imágenes que agregó después no son fotos: `39-B.jpg` es una vista de mapa (no de Google Maps; origen y licencia por confirmar) y `39B-Draw.jpg` es una ilustración sin escala. No se midió nada en ellas. Si la licencia del mapa lo permite, sirve para el trazado del suelo (caminos, perímetro, agua), con la escala sacada de medidas publicadas; las posiciones de los pararrayos, la torre de agua y los tanques no aparecen en el mapa. Gastón no encontró una foto cenital de NASA, y las posiciones salieron de OpenStreetMap (arriba).
 
 ### Falta conseguir (etapa 0)
 
 - ~~Elevación de LC‑39B~~: conseguida ([LC50], arriba).
 - ~~Imágenes de referencia~~: elegidas por Gastón (`docs/reference/launch/`, arriba).
-- **Posiciones de los pararrayos, la torre de agua y los tanques, la rampa del crawlerway, el cerco y el trazado del suelo:** falta una foto cenital de NASA con escala (decisión de Gastón, sesión 42). Hace falta antes de la etapa 3 (posiciones) y de la 6 (trazado); la etapa 2 no la necesita.
+- ~~Posiciones de los pararrayos, la torre de agua y los tanques~~: de OpenStreetMap (arriba), con crédito.
+- **La rampa del crawlerway, el cerco y el trazado del suelo:** no se calcan (decisión de Gastón, sesión 42). El suelo de la etapa 6 es genérico; la orientación sí se conoce (foso al norte [39B], crawlerway desde el sur).
 
 ## 3. Decisiones
 
@@ -181,7 +199,7 @@ Conclusión: **no hay que mover las estaciones del cohete.** Las diferencias de 
 | D3 | Altura del cohete | **Sobre la cubierta del ML** (14,33 m más la elevación de la plataforma), cambiando `padState` y recalibrando | Solo en el dibujo, con lo que el ML quedaría enterrado o el cohete flotando |
 | D4 | Arranque de los RS‑25 | **T‑6,36 s, el valor publicado**, recalibrando | Dejar los 6 s supuestos |
 | D5 | Cámara de la plataforma | **Un modo nuevo, `PLATAFORMA`, con la vertical local arriba.** AUTO lo usa hasta ~T+30 s y después pasa a NAVE | Sin cámara nueva; con NAVE el cohete se ve acostado |
-| D6 | Textura del suelo cercano | **Un trazado propio** (polígonos de hormigón, caminos, pasto, arena y agua) dibujado a partir de una foto de referencia, con ruido de detalle | Sumar un parche regional de Landsat de 15–30 m/px; el crédito es "NASA/USGS" y hay que decidir si entra en el criterio de `ASSETS.md` |
+| D6 | Textura del suelo cercano | **Un trazado propio** (polígonos de hormigón, caminos, pasto, arena y agua) dibujado a partir de una foto de referencia, con ruido de detalle. **Cambiada en la sesión 42:** no hay foto cenital usable y Gastón no quiere calcar el mapa, así que el trazado es genérico (hormigón de la plataforma, pasto y agua, con la orientación conocida) | Sumar un parche regional de Landsat de 15–30 m/px; el crédito es "NASA/USGS" y hay que decidir si entra en el criterio de `ASSETS.md` |
 | D7 | Página de la cuenta en pantalla | **La página nueva arriba en la pantalla izquierda mientras t < 0.** Al despegar vuelve `Flt.Traj` | Dejar las páginas iniciales de ahora y que el tutorial señale la pestaña |
 | D8 | Quién habla durante la cuenta | **El control de lanzamiento (Kennedy) hasta que el cohete despeja la torre, y Houston desde ahí**, como en la realidad | Todo como Houston |
 | D9 | Hora del despegue (agregada después con los datos de [LDAY]; Gastón la confirmó en la misma sesión) | **La real, 22:35 UTC**: `LAUNCH_BEFORE_SUNSET` = 1,28 h − 11 min, citando [AV] y [LDAY]. Se hace en la etapa 1 | Dejar la apertura de la ventana (22:24 UTC) |
@@ -216,6 +234,8 @@ Hay tres problemas, ordenados de más grave a menos.
 - Radio de ~5 km (desde 2 m de altura el horizonte está a 5 km), con la curvatura real y un faldón en el borde.
 - Se dibuja en la pasada de la nave, cuyo plano lejano cercano da ~3 mm de resolución. El shader de la Tierra descarta sus fragmentos dentro de ese radio, en color y en la pasada de solo profundidad.
 - Lleva el relieve: la plataforma elevada, la rampa del crawlerway y el foso de llamas.
+
+**Cómo quedó (etapa 2, sesión 43; decisión 47):** malla polar con espaciado hasta 0,5° (118.477 vértices; error de cuerda 1,2 cm a 10 km y 541 m como máximo). El suelo es como se propuso, salvo dónde se dibuja: el color va en la pasada principal, justo después de la atmósfera y con su misma bruma (la atmósfera corta en la esfera del nivel del mar y pintaba cielo sobre la plataforma elevada; en la pasada de la nave el suelo habría tapado la estela y recibido la luz de relleno), y la profundidad se escribe otra vez en la pasada de la nave, con la precisión de milímetros. Pasa 10 m más allá del círculo que descarta la Tierra, para que el error de float32 de la Tierra no abra grietas. El relieve es solo la plataforma elevada con forma supuesta (sin rampa ni foso: no hay trazado publicado). Lleva la textura de la Tierra hasta la etapa 6.
 
 **3. Textura.** Una cascada de niveles por distancia, cada uno fundido en el borde del siguiente:
 
@@ -282,6 +302,7 @@ Todas salen del tiempo de la cuenta (`countdownStatus`) o del estado de la simul
 - **Modo nuevo `pad` (PLATAFORMA):** una cámara fija en el suelo, en el perímetro de la plataforma, a ~400 m y 2 m de altura *(elección de dibujo)*, con la vertical local arriba. Apunta al cohete y lo sigue mientras sube, y la rueda cambia el campo visual (zoom de telescopio, como las cámaras de seguimiento). Tecla `6` y `?cam3d=pad`. No toca la cámara NAVE (sesión 31).
 - **AUTO (D5):** usa PLATAFORMA mientras t < ~30 s o la nave está a menos de ~5 km, y NAVE después, con una transición suavizada.
 - **`camera.ts`:** un rig de perspectiva que acepte un ojo fijo y su propio vector hacia arriba, sin `OrbitControls`. La cámara nunca entra en el suelo: `keepOutside` se aplica contra la malla de suelo, no contra la esfera.
+- **Cómo quedó (etapa 2, sesión 43; decisión 47):** la cámara está a 400 m al sur‑sudoeste (200°): al sudoeste el pararrayos de 221° y 157 m (OpenStreetMap) quedaba delante del cohete. Mira un poco debajo del centro del vehículo para que se vea el suelo. AUTO pasa a NAVE solo por tiempo (T+30 s), en 2,5 s. El rig de `camera.ts` separa la cámara que se dibuja de la que mueven los `OrbitControls` y las mezcla durante el paso; la cámara NAVE se mantiene sobre el relieve del suelo además de fuera de la esfera.
 - **Sombras (opcional):** el Sol está a ~1 h de la puesta y daría sombras largas del cohete y de la torre. Serían un mapa de sombras acotado a la plataforma (~600 m) en la pasada de la nave. Se evalúa al final, según el rendimiento.
 
 ### 4.7 Panel y textos
@@ -322,7 +343,7 @@ Cada etapa termina con tests y build en verde, capturas headless (receta de `CLA
 |---|---|---|---|---|
 | 0 | Datos e imágenes. Las hojas de datos ya están leídas ([ML1], [UMB], [39B], [CNT], [LDAY]); falta que Gastón elija las imágenes y medir en ellas lo que no está publicado | `docs/reference/16.png` y siguientes | — | chico |
 | 1 | Cuenta final en la simulación: T‑10 min, hitos (con el agua en T‑20 s), RS‑25 en T‑6,36 s, cohete sobre la cubierta y los postes, hora real del despegue (D9), Houston, log, Procs `LAUNCH`, página `Flt.Count` y barra de estado. Las constantes nuevas van en `constants.ts` con su cita, y las fuentes en `CLAUDE.md` | `sim/mission/countdown.ts`, `state.ts`, `vehicle.ts`, `advance.ts`, `capcom.ts`, `procedures.ts`, `sim/i18n.ts`, `ui/panel/pages/Count.tsx`, `pages/index.ts`, `StatusBar.tsx`, `ui/i18n.ts` | `npm run tune`. Tests: arranque en −600 s sin consumo, RS‑25 en −6,36 s, despegue reproducible, hitos ordenados y en sus T‑ publicados, warp ×1 en T‑33 s. Captura de la página | mediano |
-| 2 | Suelo: malla polar de la Tierra, suelo propio con descarte, marco local y cámara PLATAFORMA | `render/bodies.ts`, `render/padGround.ts`, `render/scene.ts`, `render/camera.ts`, `TrajectoryView.tsx`, `store.ts` | Tests: error de cuerda < 2 cm a 10 km de la plataforma y nunca mayor que el de la esfera actual; marco local coherente con `earthGeoMatrix`. Capturas con `?cam3d=pad` en T‑60 s y T+10 s | mediano |
+| 2 (**hecha**, sesión 43) | Suelo: malla polar de la Tierra, suelo propio con descarte, marco local y cámara PLATAFORMA | `render/bodies.ts`, `render/atmosphere.ts`, `render/padGround.ts`, `render/scene.ts`, `render/camera.ts`, `TrajectoryView.tsx`, `store.ts` | Tests: error de cuerda < 2 cm a 10 km de la plataforma y nunca mayor que el de la esfera actual; marco local coherente con `earthGeoMatrix`. Capturas con `?cam3d=pad` en T‑60 s y T+10 s | mediano |
 | 3 | Modelo del ML‑1 y de LC‑39B, y apoyo del cohete en los postes | `render/pad.ts`, `render/vehicle.ts` (anclaje), `scene.ts` | Tests de las comprobaciones cruzadas (4.3). Capturas con PLATAFORMA, NAVE y TIERRA | grande |
 | 4 | Animaciones de la cuenta y del despegue | `render/pad.ts`, `countdown.ts` | Capturas en T‑9 min, T‑7 min, T‑11 s, T‑1 s y T+3 s | mediano |
 | 5 | Vapor, agua y nube del foso | `render/padCloud.ts`, `scene.ts` | Tests de la función pura: nada antes de su hito, determinista, sin partículas después de su vida. Capturas en T‑5 min, T‑3 s, T+5 s y T+20 s | mediano |
