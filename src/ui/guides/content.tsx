@@ -21,7 +21,7 @@ import { dvMagnitude } from '../../sim/burns';
 import { formatDuration, formatMet, formatNumber } from '../../sim/format';
 import { Locale } from '../../sim/i18n';
 import { MISSION_PARAMS } from '../../sim/mission/params';
-import { CONFIG_AT_LIFTOFF, CUBESAT_COUNT, ENGINES, MASS, SRB_ISP, SRB_THRUST_PROFILE, dryMass, idealDv } from '../../sim/vehicle';
+import { CONFIG_AT_LIFTOFF, CUBESAT_COUNT, ENGINES, MASS, RS25_START_BEFORE_LIFTOFF, SRB_ISP, SRB_THRUST_PROFILE, dryMass, idealDv } from '../../sim/vehicle';
 import { GuideId } from '../store';
 
 /** Text by language. */
@@ -138,7 +138,7 @@ function stages(l: Locale): GuideContent {
         table: {
           head: ['#', L(l, 'Event', 'Evento'), L(l, 'Published MET', 'MET publicado'), L(l, 'Model MET', 'MET del modelo')],
           rows: [
-            row('E1', L(l, 'Liftoff from LC‑39B. The RS‑25 engines start 6 s before T‑0; the boosters at T‑0.', 'Despegue desde LC‑39B. Los RS‑25 arrancan 6 s antes de T‑0; los boosters en T‑0.'), '000/00:00:00', '000/00:00:00'),
+            row('E1', L(l, `Liftoff from LC‑39B. The terminal count starts at T‑10 min; the RS‑25 engines start ${formatNumber(RS25_START_BEFORE_LIFTOFF, 2)} s before T‑0 and the boosters at T‑0.`, `Despegue desde LC‑39B. La cuenta final empieza en T‑10 min; los RS‑25 arrancan ${formatNumber(RS25_START_BEFORE_LIFTOFF, 2)} s antes de T‑0 y los boosters en T‑0.`), '000/00:00:00', '000/00:00:00'),
             row('E2', L(l, 'Booster separation at 2:08; launch abort system jettison at 3:28.', 'Separación de boosters a 2:08; eyección de la torre de escape a 3:28.'), '000/00:02:08', '000/00:02:08'),
             row('E3', L(l, `MECO at 8:06 and core stage separation into a ${formatNumber(INSERTION_ORBIT.perigee)} × ${formatNumber(INSERTION_ORBIT.apogee)} km orbit.`, `MECO a 8:06 y separación de la etapa central en una órbita de ${formatNumber(INSERTION_ORBIT.perigee)} × ${formatNumber(INSERTION_ORBIT.apogee)} km.`), '000/00:08:18', '000/00:08:18'),
             row('E4', L(l, `ICPS perigee raise (~30 s) to ${formatNumber(POST_PRM_ORBIT.perigee)} km.`, `Elevación del perigeo con el ICPS (~30 s) a ${formatNumber(POST_PRM_ORBIT.perigee)} km.`), met(MET_E4_PERIGEE_RAISE), met(P.burns.E4.met)),

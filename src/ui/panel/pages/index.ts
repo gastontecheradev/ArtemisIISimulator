@@ -2,6 +2,7 @@ import { FC } from 'react';
 import { SimState } from '../../../sim/state';
 import { Burn, burnActions } from './Burn';
 import { CommSum } from './CommSum';
+import { Count, countActions } from './Count';
 import { Fault, faultActions } from './Fault';
 import { FlightTraj } from './FlightTraj';
 import { Pfd, pfdActions } from './Pfd';
@@ -10,7 +11,7 @@ import { PropSys } from './PropSys';
 import { SysSum } from './SysSum';
 import { Timeline } from './Timeline';
 
-export type PageId = 'PFD' | 'TRAJ' | 'BURN' | 'PROCS' | 'TL' | 'SUM' | 'FAULT' | 'PROP' | 'COMM';
+export type PageId = 'PFD' | 'TRAJ' | 'BURN' | 'PROCS' | 'TL' | 'COUNT' | 'SUM' | 'FAULT' | 'PROP' | 'COMM';
 
 /** Action of a Display Unit side key. */
 export interface SoftAction {
@@ -52,6 +53,7 @@ export const PAGES: Readonly<Record<PageId, PageDef>> = {
   BURN: { title: 'Flt.Burn', menu: 'Burn', group: 'Flt', Body: Burn, actions: burnActions },
   PROCS: { title: 'Sys.Procs', menu: 'Procs', group: 'Flt', Body: Procs, actions: procsActions },
   TL: { title: 'Mission.Tl', menu: 'TL', group: 'Flt', Body: Timeline, actions: none },
+  COUNT: { title: 'Flt.Count', menu: 'Count', group: 'Flt', Body: Count, actions: countActions },
   SUM: { title: 'Sys.Sum', menu: 'Sum', group: 'Sys', Body: SysSum, actions: none },
   FAULT: { title: 'Fault', menu: 'Fault', group: 'Sys', Body: Fault, actions: faultActions },
   PROP: { title: 'Prop.Sys', menu: 'Prop', group: 'Sys', Body: PropSys, actions: none },
@@ -60,6 +62,6 @@ export const PAGES: Readonly<Record<PageId, PageDef>> = {
 
 /** Tabs of each group, in menu order (after the ▲ key). Procs appears in both: it is the command interface. */
 export const MENUS: Readonly<Record<PageGroup, readonly PageId[]>> = {
-  Flt: ['PFD', 'TRAJ', 'BURN', 'PROCS', 'TL'],
+  Flt: ['PFD', 'TRAJ', 'BURN', 'PROCS', 'TL', 'COUNT'],
   Sys: ['SUM', 'FAULT', 'PROP', 'COMM', 'PROCS'],
 };

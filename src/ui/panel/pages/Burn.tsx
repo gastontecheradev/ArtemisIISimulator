@@ -4,7 +4,7 @@ import { burnAtp, confirmDv } from '../../../sim/commands';
 import { ATTITUDE_TOLERANCE } from '../../../sim/constants';
 import { formatDuration, formatMet, formatNumber } from '../../../sim/format';
 import { angleBetween } from '../../../sim/math/vec3';
-import { PROCEDURE_ORDER, activeManeuverId } from '../../../sim/mission/procedures';
+import { PROCEDURE_ORDER, activeManeuverId, isManeuverId } from '../../../sim/mission/procedures';
 import { PropSystem, SYSTEM_ENGINE } from '../../../sim/propulsion';
 import { SimState } from '../../../sim/state';
 import { ENGINES, G0, burnDuration, totalMass } from '../../../sim/vehicle';
@@ -50,7 +50,7 @@ export function burnSummary(s: SimState): BurnSummary | null {
     }
   }
   // Otherwise, the next scheduled crew burn (the one Procs will load next).
-  const next = PROCEDURE_ORDER.map((p) => (p === 'SEP_ICPS' || p === 'SEP_CM' ? null : s.maneuvers[p])).find(
+  const next = PROCEDURE_ORDER.map((p) => (isManeuverId(p) ? s.maneuvers[p] : null)).find(
     (m) => m && m.tig !== null && m.status === 'pending',
   );
   if (next) return { id: next.id, system: next.system, status: 'pend', tig: next.tig, dv: next.dv, delivered: null, tEnd: null, confirmed: next.confirmed };

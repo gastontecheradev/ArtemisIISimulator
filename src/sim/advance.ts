@@ -29,7 +29,8 @@ import { ShipState, integrate } from './integrator';
 import { Vec3, add, cross, distance, dot, length, normalize, scale, sub } from './math/vec3';
 import { ASCENT_SEQUENCE, airPathTangent, ascentDirection } from './mission/ascent';
 import { isPostTli } from './mission/phases';
-import { MANEUVER_TITLE, firstIncompleteProcedure, procedureComplete } from './mission/procedures';
+import { COUNTDOWN, MET_ALS } from './mission/countdown';
+import { MANEUVER_TITLE, firstIncompleteProcedure, isManeuverId, procedureComplete } from './mission/procedures';
 import { EventId, eventNumber } from './mission/timeline';
 import { earthElements, timeToEntry } from './orbit';
 import { PowerInput, forces, makeDrag, makePower } from './power';
@@ -143,7 +144,7 @@ function attitudeTargetDv(s: SimState): DeltaV | null {
     if (ab.status === 'pending' && ab.met - s.t <= BURN_LEAD_TIME && !s.vehicle.icpsSeparated) return ab.dv;
   }
   const id = s.proc.activeId;
-  if (id === 'SEP_ICPS' || id === 'SEP_CM') return null;
+  if (!isManeuverId(id)) return null;
   const m = s.maneuvers[id];
   if (dvMagnitude(m.dv) === 0 || m.status === 'done') return null;
   if (m.status === 'committed') return m.dv;
@@ -605,6 +606,23 @@ function breakpoints(d: Draft): Breakpoint[] {
   };
   if (d.phase === 'ASCENSO') {
     const S = ASCENT_SEQUENCE;
+    // Terminal count [CNT]: the main milestones go to the log, the warp drops to ×1 when the
+    // automated launch sequencer takes over (to watch the launch, as before E4 and E5) and the
+    // RS‑25s start held down on the pad.
+    for (const m of COUNTDOWN) {
+      if (m.met >= 0 || !m.log) continue;
+      const log = m.log;
+      once(`cd:${m.id}`, m.met, (x) => {
+        if (m.id === 'RS25') x.ascentEngines = ['RS25'];
+        if (m.met === MET_ALS && !x.headless && !x.switches.autoCrew && x.clock.warp > 1) {
+          x.clock = { ...x.clock, warp: 1 };
+          x.warpRestore = null;
+        }
+        logTo(x, m.id === 'RS25' ? 'EVENT' : 'INFO', tr(log));
+      });
+    }
+    // Only splits the hold-down: the RS‑25 power schedule changes slope at T‑1 s (see rs25PowerLevel).
+    once('asc:rs25full', -1, () => undefined);
     once('asc:liftoff', 0, (x) => {
       // T‑0: the boosters ignite, the umbilicals release and the rocket starts to climb.
       x.ascentEngines = ['SRB', 'RS25'];
@@ -742,6 +760,8 @@ function stateTriggers(d: Draft, input: PowerInput | null): void {
  * manual attitude control and the ascent (Max Q).
  */
 function maxChunk(d: Draft): number {
+  // On the pad nothing depends on the state: the count's breakpoints split the hold-down.
+  if (d.t < 0) return Infinity;
   const rhc = d.attitude.rhc;
   if (d.attitude.mode === 'MAN' && (rhc.pitch !== 0 || rhc.yaw !== 0 || rhc.roll !== 0)) return 1;
   if ((d.burn || d.thc !== 0) && d.attitude.mode !== 'AUTO') return 2;
@@ -753,16 +773,16 @@ function maxChunk(d: Draft): number {
 }
 
 /**
- * Countdown: the RS‑25s start with the rocket held down on the pad. Until T‑0
- * the spacecraft follows the pad and only the propellant changes (the flow depends on
- * time, so it is integrated with Simpson's rule).
+ * Countdown: the rocket is held down on the pad until T‑0. It follows the pad and only the
+ * propellant changes once the RS‑25s start (their flow is linear in time between breakpoints,
+ * so Simpson's rule integrates it exactly). Before that nothing is consumed.
  */
 function holdDown(d: Draft, until: number): void {
   const eph = ephemerisOf(d);
   const input = powerInputOf(d);
   const t0 = d.t;
   const t1 = Math.min(until, 0);
-  if (input && t1 > t0) {
+  if (input && input.engines.length > 0 && t1 > t0) {
     const n = Math.max(2, 2 * Math.ceil((t1 - t0) / 0.1));
     const h = (t1 - t0) / n;
     const used = new Array<number>(TANK_COUNT).fill(0);
@@ -852,7 +872,10 @@ export function advance(state: SimState, dtSim: number, maxSteps = DEFAULT_MAX_S
     const eph = ephemerisOf(d);
     const target = d.t + dtSim;
     let budget = maxSteps;
-    while (d.t < target && budget > 0 && d.clock.running && !d.outcome) {
+    // A trigger that slows the warp down ends the frame there: the rest of the frame was
+    // requested at the old speed (at ×10000 it would skip the whole launch).
+    const warp0 = d.clock.warp;
+    while (d.t < target && budget > 0 && d.clock.running && d.clock.warp >= warp0 && !d.outcome) {
       const bp = breakpoints(d).reduce<Breakpoint | null>((a, b) => (!a || b.t < a.t ? b : a), null);
       if (bp && bp.t <= d.t) {
         d.oneShots = [...d.oneShots, bp.key];

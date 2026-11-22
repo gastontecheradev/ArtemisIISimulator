@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   adjustDv,
   computeCorrection,
@@ -51,6 +52,15 @@ export function Procs({ s }: { s: SimState }): JSX.Element {
   const id = activeManeuverId(s);
   const m = id ? s.maneuvers[id] : null;
   const toTig = m && m.tig !== null ? m.tig - s.t : null;
+  const listRef = useRef<HTMLOListElement>(null);
+  // Keeps the current step in view by scrolling the list only (long procedures such as LAUNCH).
+  useEffect(() => {
+    const list = listRef.current;
+    const row = list?.children[Math.min(current, view.steps.length - 1)] as HTMLElement | undefined;
+    if (!list || !row) return;
+    if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
+  }, [current, view.id, view.steps.length]);
   return (
     <div className="page procs">
       <div className="proc-head">
@@ -60,7 +70,7 @@ export function Procs({ s }: { s: SimState }): JSX.Element {
           {view.optional ? t('pg.optional') : ''}
         </span>
       </div>
-      <ol className="proc-steps">
+      <ol className="proc-steps" ref={listRef}>
         {view.steps.map((step, i) => {
           const skipped = !step.done && s.proc.skipped.includes(`${view.id}:${i}`);
           const cls = `step${i === current ? ' current' : ''}${step.done ? ' done' : ''}${skipped ? ' skipped' : ''}`;

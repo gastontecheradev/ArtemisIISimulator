@@ -106,7 +106,7 @@ const pick = <T extends string>(key: string, options: readonly T[], fallback: T)
   return options.includes(v as T) ? (v as T) : fallback;
 };
 
-const CAMERAS = ['auto', 'overview', 'ship', 'earth', 'moon'] as const;
+const CAMERAS = ['auto', 'overview', 'ship', 'earth', 'moon', 'pad'] as const;
 
 /** Settings shared by both views, plus each one's camera. */
 export interface ViewState {
@@ -114,7 +114,7 @@ export interface ViewState {
   readonly camera: Readonly<Record<ViewDim, CameraMode>>;
 }
 
-// Also via URL: ?cam3d=earth, ?map=inertial (2D map only).
+// Also via URL: ?cam3d=earth (or pad, the pad camera), ?map=inertial (2D map only).
 const view = createValue<ViewState>({
   mapFrame: pick('map', ['inertial', 'rotating'] as const, 'rotating'),
   camera: { '2d': 'overview', '3d': pick('cam3d', CAMERAS, 'auto'), inset: 'earth' },
@@ -141,6 +141,7 @@ export function getViewSettings(dim: ViewDim): ViewSettings {
  * Cockpit display settings (not part of the simulation, like the camera):
  * - `attRef`: reference frame of the attitude ball (the PFD's Att Ref key).
  * - `faultCursor`, `faultSort`: selected row and order of the Fault page.
+ * - `countFocus`: row of Flt.Count chosen with Scroll, or null to follow the count.
  * - `lampTest`: the lamp test switch is held (all LEDs and annunciators lit).
  * - `brightness`: brightness of each Display Unit (Brt/Dim keys), by index.
  */
@@ -148,10 +149,11 @@ export interface PanelUi {
   readonly attRef: 'LVLH' | 'INRTL';
   readonly faultCursor: number;
   readonly faultSort: 'time' | 'class';
+  readonly countFocus: number | null;
   readonly lampTest: boolean;
   readonly brightness: readonly number[];
 }
-const panelUi = createValue<PanelUi>({ attRef: 'LVLH', faultCursor: 0, faultSort: 'time', lampTest: false, brightness: [1, 1, 1] });
+const panelUi = createValue<PanelUi>({ attRef: 'LVLH', faultCursor: 0, faultSort: 'time', countFocus: null, lampTest: false, brightness: [1, 1, 1] });
 export const usePanelUi = panelUi.use;
 export const getPanelUi = panelUi.get;
 export const setPanelUi = (patch: Partial<PanelUi>): void => panelUi.set({ ...panelUi.get(), ...patch });

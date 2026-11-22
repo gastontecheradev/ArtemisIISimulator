@@ -10,6 +10,17 @@
  * - [ASC] NASA, ascent and Earth-orbit infographic for Artemis II, same as the [SLS] table.
  * - [JPL] NASA/JPL, Horizons ephemeris system (ssd.jpl.nasa.gov/horizons), accessed 2026-11-15.
  * - [ORG] NASA, "Orion Reference Guide", 2022-11-10 (predates Artemis I; Orion data).
+ * - [CNT] NASA, "NASA Releases Artemis II Moon Mission Launch Countdown", 2026-03-26
+ *   (nasa.gov/general/nasa-releases-artemis-ii-moon-mission-launch-countdown/): terminal count
+ *   from T‑10 min; the times are "approximate".
+ * - [ML1] NASA, "Mobile Launcher 1" fact sheet, FS‑2024‑11‑997‑KSC.
+ * - [UMB] NASA, "Mobile Launcher Tower Umbilicals and Accessories" fact sheet, FS‑2021‑08‑727‑KSC.
+ * - [39B] NASA, "Launch Complex 39B" fact sheet, FS‑2021‑08‑726‑KSC.
+ * - [LDAY] NASA, "Live Artemis II Launch Day Updates", blog, 2026-04-01.
+ * - [LC50] NASA, "NASA Celebrates 50th Anniversary of Launch Complex 39B, Prepares for Next
+ *   Mission", 2017-06-14 (nasa.gov/centers-and-facilities/kennedy/): pad elevation.
+ * - [OSM] © OpenStreetMap contributors (ODbL), via the Overpass API: only the positions (and the
+ *   tank footprints) of elements around LC‑39B, credited in the app's Credits.
  */
 
 // --- Physics ---
@@ -51,12 +62,14 @@ export const MODEL_PLANE_AZIMUTH_DEG = 90;
 export const EARTH_ROTATION_IN_PLANE = EARTH_ROTATION_RATE * Math.cos((LAUNCH_LATITUDE_DEG * Math.PI) / 180);
 
 /**
- * [AV] Opening of the 2026-04-01 window (06:24 PM EDT = 22:24 UTC): "1.28 Hours
- * Before Sunset" at the pad. The model lifts off at that instant (MET 0) and the Sun
- * direction comes from this figure: sunset happens when Earth's rotation brings the
+ * Liftoff time and the Sun. [AV]: the 2026-04-01 window opened at 06:24 PM EDT (22:24 UTC),
+ * "1.28 Hours Before Sunset" at the pad. [LDAY]: Artemis II lifted off at 06:35 PM EDT
+ * (22:35 UTC), 11 minutes later. The model lifts off at the real time (MET 0 = 22:35 UTC) and
+ * the Sun direction comes from this figure: sunset happens when Earth's rotation brings the
  * pad's vertical to 90° from the Sun.
  */
-export const LAUNCH_BEFORE_SUNSET = 1.28 * 3600; // s
+export const LIFTOFF_AFTER_WINDOW_OPEN = 11 * 60; // s
+export const LAUNCH_BEFORE_SUNSET = 1.28 * 3600 - LIFTOFF_AFTER_WINDOW_OPEN; // s
 /** Earth's mean motion around the Sun (sidereal year of 365.256 days): the Sun advances ~0.99°/day. */
 export const EARTH_ORBIT_RATE = (2 * Math.PI) / (365.256 * 86400); // rad/s
 
@@ -64,7 +77,9 @@ export const EARTH_ORBIT_RATE = (2 * Math.PI) / (365.256 * 86400); // rad/s
  * [JPL] Moon's orbit during the mission: Keplerian ellipse (two bodies, GM_EARTH + GM_MOON)
  * least-squares fitted to the geocentric vectors from JPL Horizons (Moon, code
  * 301, center 500@399), hourly from 2026-04-01 12:00 to 2026-04-12 12:00 UTC,
- * projected onto their mean plane. MET 0 = 2026-04-01 22:24 UTC ([AV]).
+ * projected onto their mean plane. The fit was made with its time origin at the window
+ * opening, 2026-04-01 22:24 UTC ([AV]); the model's MET 0 is the actual liftoff, 11 min
+ * later ([LDAY]), so the apogee passage is 11 min earlier in MET.
  * Error against Horizons: < 400 km in distance between MET 3 d and 6 d (flyby), 1,860 km
  * at most (at liftoff) and < 811 km along the whole orbit.
  * The Moon passed apogee on 2026-04-07 (404,964 km): during the flyby it was ~5 %
@@ -75,8 +90,8 @@ export const MOON_ORBIT = {
   /** Semi-major axis (km). */
   a: 382778.4,
   e: 0.05777,
-  /** MET of the apogee passage (s): 5.2027 d. */
-  apogeeMet: 5.2027 * 86400,
+  /** MET of the apogee passage (s): 5.2027 d after the window opening. */
+  apogeeMet: 5.2027 * 86400 - LIFTOFF_AFTER_WINDOW_OPEN,
 } as const;
 
 /** Radius of the lunar sphere of influence (Laplace): D·(GM_MOON/GM_EARTH)^(2/5). */
@@ -87,6 +102,119 @@ export const FT_TO_KM = 0.3048 / 1000;
 export const MPH_TO_KMS = 0.44704 / 1000;
 export const NM_TO_KM = 1.852;
 export const MI_TO_KM = 1.609344;
+
+// --- Launch pad ---
+/**
+ * Height of the rocket's support on the pad above the model's sea-level sphere (km): the
+ * boosters' aft skirts rest on the vehicle support posts, on the Mobile Launcher deck. The
+ * simulated position on the pad is that point.
+ * - [ML1] Deck (level 0) 47 ft above the ground.
+ * - [UMB] Vehicle support posts: 5 ft tall, four per booster, under the aft skirts.
+ * - [LC50] Pad elevation: "Pad B sits seven feet higher (55 feet) above mean sea level" (the
+ *   pad surface the Mobile Launcher stands on). Shuttle-era NASA fact sheets give the same 55 ft
+ *   for the Pad B hardstand; no source says whether the rebuild for SLS changed it. A side photo
+ *   of the pad (stage 0) shows its surface ~12–16 m above the surrounding ground, consistent.
+ */
+export const LAUNCH_DECK_HEIGHT = 47 * FT_TO_KM; // 14.33 m
+export const SUPPORT_POST_HEIGHT = 5 * FT_TO_KM; // 1.52 m
+export const PAD_ELEVATION = 55 * FT_TO_KM; // 16.76 m
+export const LAUNCH_SITE_HEIGHT = PAD_ELEVATION + LAUNCH_DECK_HEIGHT + SUPPORT_POST_HEIGHT; // 32.61 m (107 ft)
+/**
+ * [ML1] Mobile Launcher 1 (km). A two-story base 25 ft tall, 165 ft long and 135 ft wide on six
+ * 22 ft steel mounts (22 + 25 = 47 ft, the deck); a tower 40 ft square and ~345 ft tall with a
+ * floor every 20 ft, ~400 ft above the ground in all; an exhaust opening of 34 × 64 ft in the deck.
+ * On the pad the base's long side runs north-south: its six mounts span 40.3 m east-west and
+ * 48.9 m north-south (ML_MOUNTS). The opening's long side goes along the boosters' line, east-west
+ * (the photos in `ROCKET_ON_ML`).
+ */
+export const ML1 = {
+  baseLength: 165 * FT_TO_KM,
+  baseWidth: 135 * FT_TO_KM,
+  baseHeight: 25 * FT_TO_KM,
+  mountHeight: 22 * FT_TO_KM,
+  towerSide: 40 * FT_TO_KM,
+  towerHeight: 345 * FT_TO_KM,
+  floorSpacing: 20 * FT_TO_KM,
+  totalHeight: 400 * FT_TO_KM,
+  openingLength: 64 * FT_TO_KM,
+  openingWidth: 34 * FT_TO_KM,
+} as const;
+/** [UMB] Tail service mast umbilicals: about 33 ft tall above the deck. */
+export const TSMU_HEIGHT = 33 * FT_TO_KM;
+/**
+ * [39B] North side of the flame trench, where the new deflector sends the whole plume: ~571 ft
+ * long, 58 ft wide and 42 ft high. The same fact sheet's "Fun Facts" give a 450 ft trench; the
+ * detailed figure is used.
+ */
+export const FLAME_TRENCH = { length: 571 * FT_TO_KM, width: 58 * FT_TO_KM, depth: 42 * FT_TO_KM } as const;
+/** [39B] Three lightning masts of 600 ft. [OSM]: each is a 146.4 m lattice tower with the mast on top. */
+export const LIGHTNING_MAST_HEIGHT = 600 * FT_TO_KM;
+export const LIGHTNING_TOWER_HEIGHT = 0.1464;
+
+/**
+ * [OSM] Positions around LC‑39B from OpenStreetMap (ODbL; Overpass API, data of 2026-11-22; launch
+ * plan, §2), in km east and north of the center of the Mobile Launcher's six mounts
+ * (`man_made=mast` + `tower:type=portal`, 28.6272154° N, 80.6208577° W), with 110,830 m per degree
+ * of latitude and 97,787 m per degree of longitude. Credit in the app's Credits.
+ */
+const osm = (eastM: number, northM: number): { readonly east: number; readonly north: number } => ({ east: eastM / 1000, north: northM / 1000 });
+/** The six mounts the Mobile Launcher stands on: 40.3 m apart east-west, in pairs 26, 4 and 22 m north/south of the center. */
+export const ML_MOUNTS = [osm(-20.15, 26), osm(20.15, 26), osm(-20.15, -4), osm(20.15, -4), osm(-20.15, -22), osm(20.15, -22)] as const;
+export const LIGHTNING_MASTS = [osm(-102.9, -118.3), osm(125.1, 38.3), osm(-144.0, 66.9)] as const;
+/**
+ * The water tower: [OSM] 80.5 m tall (`height`) with a 2.4 m column (`diameter`); its description
+ * gives an 88 m tower. [39B]: ~400,000 gallons. The tank's shape is measured in `launch-1.jpg`
+ * (stage 3; ~12.8 m wide and ~8.8 m tall, scaled with the core stage): about 1,400 m³, consistent.
+ */
+export const WATER_TOWER = { ...osm(101.7, 114.5), tankTop: 0.0805, top: 0.088, column: 0.0024, tankDiameter: 0.0128, tankHeight: 0.0088 } as const;
+/** Spherical tanks: [OSM] positions and footprint diameters (the largest is probably the new LH2 tank of [39B]). */
+export const CRYO_TANKS = [
+  { ...osm(372.9, 227.7), diameter: 0.0222 }, // LH2 (way 153128950)
+  { ...osm(236.7, 319.4), diameter: 0.0247 }, // LH2 (way 901620453)
+  { ...osm(-398.5, 244.6), diameter: 0.0222 }, // LOX (way 153128951)
+] as const;
+/**
+ * Where the rocket stands on the Mobile Launcher (km from the mounts' center). Measured in stage 3
+ * on NASA photos of the pad (`docs/reference/launch/`): fitting the heading of the launch photo taken
+ * from the south-southwest (`launch-1.jpg`: two masts, the water tower and the rocket, 3 px residual)
+ * and of the side photo from the west (`ML-1-image-2.jpg`) against the OSM positions puts the core
+ * stage's axis 7–8 m south of the center and centered east-west within ~1 m. The side photo agrees:
+ * there the base reaches 15.0 m south and 34.8 m north of the axis. The same photos show the tower
+ * north of the rocket (the side it is drawn on, `ML_TOWER_FACE`) and the boosters east and west of it.
+ * The simulated launch point is this axis; the model's LC‑39B coordinates (Wikipedia) fall 27.6 m
+ * from the mounts' center and only place Earth's texture.
+ */
+export const ROCKET_ON_ML = osm(0, -7.5);
+/**
+ * Distance from the rocket's axis to the face of the Mobile Launcher tower that looks at it (km):
+ * 14.7 m, measured in the side photo (`ML-1-image-2.jpg`, stage 0, launch plan §2).
+ */
+export const ML_TOWER_FACE = 0.0147;
+
+/**
+ * Shape of the elevated pad as the 3D view draws it (km), around the simulated launch point.
+ * **Unverified assumption**: a flat top at PAD_ELEVATION and a smooth slope down to the surrounding
+ * ground, which is taken at mean sea level (the model's sphere; the stage-0 photo shows the pad
+ * surface ~12–16 m above the grass, consistent). The top is every point within PAD_TOP_RADIUS of a
+ * north-south segment through the launch point, from PAD_TOP_SOUTH south of it to PAD_TOP_NORTH north
+ * of it (a stadium), and the slope is PAD_SLOPE_RUN long. Until stage 3 it was a circle (the segment
+ * was a point): it holds the Mobile Launcher base (its farthest corner is 40 m away), but the flame
+ * trench ([39B]: 174 m on the north side, 12.8 m deep) would have opened out of it at 94 m.
+ * - PAD_TOP_NORTH is derived: the trench floor meets the slope 174 m north of the rocket.
+ * - PAD_TOP_SOUTH: the photo from the east (`ML1-image-3.jpg`) shows the flat top edge across the
+ *   whole frame, at least ~100 m south of the rocket (qualitative).
+ * - The slope still ends before the lightning masts (≥ 125 m from the segment) and at the foot of
+ *   the water tower (OSM; launch plan, §2).
+ * No source gives the outline of the hardstand: the crawlerway ramp is not drawn, and the ground
+ * layout is generic (D6). The physics does not use these values.
+ */
+export const PAD_TOP_RADIUS = 0.06; // km
+export const PAD_SLOPE_RUN = 0.05; // km
+export const PAD_TOP_SOUTH = 0.04; // km
+export const PAD_TOP_NORTH =
+  FLAME_TRENCH.length -
+  PAD_TOP_RADIUS -
+  (PAD_SLOPE_RUN * Math.acos((2 * (PAD_ELEVATION - FLAME_TRENCH.depth)) / PAD_ELEVATION - 1)) / Math.PI; // ≈ 0.080 km
 
 const hms = (h: number, m: number, s: number): number => h * 3600 + m * 60 + s;
 const dhms = (d: number, h: number, m: number, s: number): number => d * 86400 + hms(h, m, s);

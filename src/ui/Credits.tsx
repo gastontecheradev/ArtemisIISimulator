@@ -46,6 +46,13 @@ export function Credits({ onClose }: { onClose: () => void }): JSX.Element {
         )}
         <p>{t('cr.model')}</p>
         <p className="dim">{t('cr.sources')}</p>
+        {/* ODbL: the pad's positions come from OpenStreetMap (sim/constants.ts, [OSM]). */}
+        <p className="dim">
+          {t('cr.osm')}{' '}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+            openstreetmap.org/copyright
+          </a>
+        </p>
         <p className="dim">{t('cr.font')}</p>
         <button className="tb-btn on" onClick={onClose}>
           {t('cr.close')}

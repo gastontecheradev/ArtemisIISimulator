@@ -9,6 +9,7 @@ import { CAMERA_MODES, TrajectoryView } from './TrajectoryView';
 import { GuideViewer, GuidesMenu } from './guides/Guides';
 import { Capcom } from './panel/Capcom';
 import { DisplayUnit } from './panel/DisplayUnit';
+import type { PageId } from './panel/pages';
 import { EventLog } from './panel/EventLog';
 import { StatusBar } from './panel/StatusBar';
 import { SwitchPanel } from './panel/SwitchPanel';
@@ -17,6 +18,9 @@ import { RotAxis } from '../sim/state';
 import { useT } from './i18n';
 import { act, setCamera, setGuide, setTour, useGuide, useIntro, usePanelUi, useSim, useTour } from './store';
 import { Tour } from './tutorial/Tour';
+
+/** Initial pages of the left Display Unit (a constant: DisplayUnit compares it between renders). */
+const LEFT_PAGES: [PageId, PageId] = ['TRAJ', 'TL'];
 
 /** Minimum panel width to show a third Display Unit (the real cockpit has three). */
 const THREE_DU_MIN_WIDTH = 1280;
@@ -64,7 +68,7 @@ function useKeyboard(enabled: boolean): void {
       } else if (e.key === '+' || e.key === '=' || e.key === '.') step(1);
       else if (e.key === '-' || e.key === ',') step(-1);
       else if (e.key === 'a' || e.key === 'A') act(ackAlarms);
-      else if (/^[1-5]$/.test(e.key)) setCamera('3d', CAMERA_MODES[Number(e.key) - 1]);
+      else if (/^[1-6]$/.test(e.key)) setCamera('3d', CAMERA_MODES[Number(e.key) - 1]);
     };
     const onUp = (e: KeyboardEvent): void => {
       if (!typing(e)) hold(e, false);
@@ -104,8 +108,9 @@ export function App(): JSX.Element {
         <div className={lampTest ? 'panel lamp-test' : 'panel'}>
           <StatusBar s={s} />
           <div className="du-row">
-            {/* Gastón's layout: Traj/TL on the left and PFD/Prop on the right; Sum/Fault on the third. */}
-            <DisplayUnit s={s} index={0} initial={['TRAJ', 'TL']} />
+            {/* Gastón's layout: Traj/TL on the left and PFD/Prop on the right; Sum/Fault on the third.
+                On the pad the left one shows Flt.Count on top until liftoff. */}
+            <DisplayUnit s={s} index={0} initial={LEFT_PAGES} countdown />
             <DisplayUnit s={s} index={1} initial={['PFD', 'PROP']} />
             {units >= 3 && <DisplayUnit s={s} index={2} initial={['SUM', 'FAULT']} />}
           </div>

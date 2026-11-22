@@ -643,6 +643,7 @@ button.softkey:active {
   text-transform: none;
 }
 .proc-steps {
+  position: relative;
   flex: 1 1 auto;
   margin: 0;
   padding: 0;
@@ -1555,6 +1556,99 @@ button.softkey:active {
   color: var(--c-label-dim);
 }
 
+/* ---------- Flt.Count ---------- */
+.cnt-head {
+  display: flex;
+  align-items: baseline;
+  gap: 4px 10px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--c-label-faint);
+  padding-bottom: 2px;
+}
+.cnt-clock {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.cnt-mode {
+  font-size: 11px;
+}
+.cnt-next {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: right;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Positioned, so each row's offsetTop is measured from the list (Count.tsx scrolls it). */
+.cnt-list {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-key-lo) transparent;
+}
+.cnt-row {
+  display: grid;
+  grid-template-columns: 12px auto minmax(0, 1fr);
+  gap: 5px;
+  padding: 0 3px;
+  color: var(--c-label);
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.28;
+}
+.cnt-row .tick {
+  color: var(--c-value-hi);
+}
+.cnt-row .cnt-t {
+  color: var(--c-label-dim);
+}
+.cnt-row .cnt-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cnt-row.done .cnt-name,
+.cnt-row.done .cnt-t {
+  color: var(--c-value-hi);
+}
+/* Next milestone in magenta, as the next event of Mission.Tl. */
+.cnt-row.next {
+  background: var(--c-command);
+}
+.cnt-row.next span {
+  color: var(--c-label);
+}
+/* Pad systems in the left column, ignition (ROFI, water, engines) in the right one. */
+.cnt-ground {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(4, auto);
+  grid-auto-flow: column;
+  gap: 0 14px;
+  border-bottom: 1px solid var(--c-label-faint);
+  padding: 0 3px 2px;
+  font-size: 11px;
+  line-height: 1.28;
+  white-space: nowrap;
+}
+.cnt-g-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+/* Transitional states (the arm moving, the engines spooling up): the cockpit's status cyan. */
+.cnt-state {
+  color: var(--c-status);
+}
+
 /* ---------- Status bar: next event ---------- */
 .st-value.cmd {
   color: var(--c-command-hi);
@@ -2465,6 +2559,10 @@ button.ann.link.acked {
 }
 .log-line.mcc-caution .log-x {
   color: var(--c-caution);
+}
+/* Kennedy's launch control speaks during the count: its lines carry a dim "KSC" tag. */
+.mcc-from {
+  color: var(--c-label-dim);
 }
 
 /* ---------- Start menus: language and guides ---------- */

@@ -9,6 +9,7 @@
  * - [A2] NASA, "Artemis II Reference Guide", 2026 (primary source): Orion masses
  *   (crew module, service module, launch abort system, fairings, adapter),
  *   service module and capsule thrusters.
+ * - [CNT] NASA's published Artemis II terminal count (see constants.ts): RS‑25 start time.
  * - Whatever is not in those guides is marked with its secondary source or as an ASSUMPTION.
  */
 
@@ -184,12 +185,15 @@ const RS25_THRUST_SL_109 = 1_859_000;
 /** RS‑25 vacuum Isp: 452 s (Wikipedia; NOT a primary source). The sea-level one comes from the published thrust ratio. */
 const RS25_ISP_VAC = 452;
 
-/** Instant (s before T‑0) at which the RS‑25s start, held down on the pad. [SLS] */
-export const RS25_START_BEFORE_LIFTOFF = 6;
+/**
+ * Instant (s before T‑0) at which the RS‑25s start, held down on the pad: T‑6.36 s in the
+ * published terminal count [CNT] ([SLS] only says "~6 s").
+ */
+export const RS25_START_BEFORE_LIFTOFF = 6.36;
 
 /**
  * [SLS] RS‑25 power schedule (fraction of rated power level, RPL):
- * staggered start ~6 s before liftoff up to 100 % one second before T‑0;
+ * staggered start at T‑6.36 s ([CNT]) up to 100 % one second before T‑0;
  * 109 % from T‑0; 85 % between T+124 and T+128 ("bolt bucket" of booster
  * separation, event table); 109 % afterwards; 67 % from T+481 until MECO (T+486).
  * Acceleration limiting from ~T+421 is imposed by `gLimit` (see power.ts).

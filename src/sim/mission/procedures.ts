@@ -6,12 +6,14 @@ import {
   MET_E6_PROX_OPS_END,
   MET_E6_PROX_OPS_START,
 } from '../constants';
-import { formatMet, formatNumber } from '../format';
+import { formatCountdown, formatMet, formatNumber } from '../format';
 import { tr } from '../i18n';
 import { angleBetween } from '../math/vec3';
 import { timeToEntry } from '../orbit';
 import { PropSystem } from '../propulsion';
 import { ManeuverId, ProcedureId, SimState, ephemerisOf } from '../state';
+import { ASCENT_SEQUENCE } from './ascent';
+import { COUNTDOWN } from './countdown';
 import { phaseIndex } from './phases';
 
 /** Maneuver titles in the current language (read on every access). */
@@ -45,9 +47,10 @@ export interface ProcedureView {
   readonly steps: readonly ProcStep[];
 }
 
-export const PROCEDURE_ORDER: readonly ProcedureId[] = ['SEP_ICPS', 'E7', 'E8', 'E9', 'E10', 'E12', 'SEP_CM', 'MAN'];
+export const PROCEDURE_ORDER: readonly ProcedureId[] = ['LAUNCH', 'SEP_ICPS', 'E7', 'E8', 'E9', 'E10', 'E12', 'SEP_CM', 'MAN'];
 
 const CODE: Readonly<Record<ProcedureId, string>> = {
+  LAUNCH: 'E1 LAUNCH',
   SEP_ICPS: 'E6 ICPS SEP',
   E7: 'E7 USS',
   E8: 'E8 PRM',
@@ -58,7 +61,32 @@ const CODE: Readonly<Record<ProcedureId, string>> = {
   MAN: 'MANUAL',
 };
 
-const isManeuver = (id: ProcedureId): id is ManeuverId => id !== 'SEP_ICPS' && id !== 'SEP_CM';
+/** true if the procedure is a burn (it has a maneuver with its Δv). */
+export const isManeuverId = (id: ProcedureId): id is ManeuverId => id !== 'LAUNCH' && id !== 'SEP_ICPS' && id !== 'SEP_CM';
+
+/**
+ * Terminal count and ascent: read-only, all automatic. Its steps are the main milestones of the
+ * published count (the Flt.Count page lists all of them) and of the ascent, done by time or by
+ * the vehicle state.
+ */
+function launchSteps(s: SimState): ProcStep[] {
+  const S = ASCENT_SEQUENCE;
+  const at = (t: number, key: string, text: string, done: boolean): ProcStep => ({
+    key,
+    text: `${formatCountdown(t, true)}  ${text}`,
+    kind: 'AUTO',
+    done,
+  });
+  const count = COUNTDOWN.filter((m) => m.proc).map((m) => at(m.met, m.id, tr(`cd.${m.id}`), s.t >= m.met));
+  return [
+    ...count,
+    at(S.pitchStart, 'pitch', tr('cd.PITCH'), s.t >= S.pitchStart),
+    at(S.srbSeparation, 'srb', tr('cd.SRB'), s.vehicle.srbSeparated),
+    at(S.lasJettison, 'las', tr('cd.LASJ'), s.vehicle.lasJettisoned),
+    at(S.meco, 'meco', tr('cd.MECO'), s.t >= S.meco || s.vehicle.coreSeparated),
+    at(S.coreSeparation, 'core', tr('cd.CORE'), s.vehicle.coreSeparated),
+  ];
+}
 
 function maneuverSteps(s: SimState, id: ManeuverId): ProcStep[] {
   const m = s.maneuvers[id];
@@ -90,6 +118,9 @@ function maneuverSteps(s: SimState, id: ManeuverId): ProcStep[] {
 
 /** View of procedure `id` with the status of each step computed from the simulation. */
 export function procedureView(s: SimState, id: ProcedureId): ProcedureView {
+  if (id === 'LAUNCH') {
+    return { id, code: CODE[id], title: tr('proc.launch.title'), optional: false, steps: launchSteps(s) };
+  }
   if (id === 'SEP_ICPS') {
     const sep = s.vehicle.icpsSeparated;
     return {
@@ -132,6 +163,8 @@ export function procedureView(s: SimState, id: ProcedureId): ProcedureView {
 /** true if the procedure no longer requires anything (to advance to the next one). */
 export function procedureComplete(s: SimState, id: ProcedureId): boolean {
   switch (id) {
+    case 'LAUNCH':
+      return s.vehicle.coreSeparated || s.outcome !== null;
     case 'SEP_ICPS':
       return s.vehicle.icpsSeparated && s.t >= MET_E6_PROX_OPS_END;
     case 'SEP_CM':
@@ -156,7 +189,7 @@ export function firstIncompleteProcedure(s: SimState): ProcedureId | null {
 
 /** Maneuver associated with the active procedure, if it is a burn. */
 export function activeManeuverId(s: SimState): ManeuverId | null {
-  return isManeuver(s.proc.activeId) ? s.proc.activeId : null;
+  return isManeuverId(s.proc.activeId) ? s.proc.activeId : null;
 }
 
 /**

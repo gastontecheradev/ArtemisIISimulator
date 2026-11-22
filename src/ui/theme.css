@@ -37,6 +37,11 @@
   --c-ship-core: #fa9f49; /* rocket core stage */
   --c-net-nsn: #008a66; /* Near Space Network */
   --c-net-dsn: #c7330b; /* Deep Space Network */
+  --c-pad-steel: #dfe1dd; /* Mobile Launcher steel */
+  --c-pad-base: #898479; /* Mobile Launcher base */
+  --c-pad-concrete: #d1c3af; /* pad concrete */
+  --c-pad-tank: #efede8; /* white tanks */
+  --c-pad-hood: #b3b2b3; /* tail service mast hood */
 }
 /* palette:end */
 

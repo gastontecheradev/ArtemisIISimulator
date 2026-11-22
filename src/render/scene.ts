@@ -14,15 +14,35 @@ import { createAtmosphere } from './atmosphere';
 import { createBodies } from './bodies';
 import { CameraRig, createOrthoRig, createPerspectiveRig } from './camera';
 import { createOverlay } from './markers';
+import { createPadModel } from './pad';
+import { createPadGround, liftAboveGround, padAxes, padCameraEye } from './padGround';
 import { createStars } from './stars';
 import { createTrails } from './trails';
-import { createDebrisModels, createVehicleModel, debrisLength, vehicleExtent, vehicleIconSvg } from './vehicle';
+import { PAD_ANCHOR_STATION, createDebrisModels, createVehicleModel, debrisLength, vehicleExtent, vehicleIconSvg } from './vehicle';
 import { createWake } from './wake';
 import { KM_TO_SCENE, ViewFrame, toDisplayFrame, worldToScene } from './worldToScene';
 
-/** 'auto' follows the spacecraft up close (3D). The fixed modes frame the spacecraft, Earth, the Moon or the whole system. */
-export type CameraMode = 'auto' | 'overview' | 'ship' | 'earth' | 'moon';
+/**
+ * 'auto' watches the launch from the pad camera and then follows the spacecraft up close (3D). The
+ * fixed modes frame the spacecraft, Earth, the Moon or the whole system, or stand on the ground by
+ * the pad ('pad', with the local vertical up).
+ */
+export type CameraMode = 'auto' | 'overview' | 'ship' | 'earth' | 'moon' | 'pad';
 type FixedMode = Exclude<CameraMode, 'auto'>;
+
+/**
+ * AUTO uses the pad camera until this MET (s) and the spacecraft camera afterwards (D5 of the launch
+ * plan). Drawing choice: by then the rocket is a few km up and small from the ground.
+ */
+export const AUTO_PAD_UNTIL = 30;
+/** Real seconds AUTO takes to go from the pad camera to the spacecraft camera (drawing choice). */
+const PAD_BLEND_S = 2.5;
+
+/** The camera a 3D view actually uses at time `t` with the chosen mode. */
+export function effectiveCameraMode(mode: CameraMode, t: number): FixedMode {
+  if (mode !== 'auto') return mode;
+  return t < AUTO_PAD_UNTIL ? 'pad' : 'ship';
+}
 /**
  * Three views: the 2D map (static, fixed scale covering the whole mission, in the
  * rotating or inertial frame), the Earth-vicinity inset (static, centered on Earth) and the
@@ -99,6 +119,7 @@ const SHIP_FILL = 0.45;
  * mission, and with the logarithmic depth buffer that leaves ~0.7 m of depth resolution near
  * the spacecraft: pieces a few centimeters apart flicker. With a far plane this close (the
  * spacecraft's distance plus this reach) it drops to ~3 mm. Parts farther than this are a dot.
+ * The launch pad (pad.ts) is only drawn in that pass, while the camera is this close to it.
  */
 const SHIP_DEPTH_KM = 50;
 
@@ -146,7 +167,9 @@ function defaultRadius(mode: FixedMode, rotating: boolean, cfg: VehicleConfig): 
   switch (mode) {
     case 'overview':
       return rotating ? 290000 : 470000;
+    // The pad camera does not orbit: this only sets up the orbit camera it hands over to.
     case 'ship':
+    case 'pad':
       return closeRadius(cfg);
     // Bodies at real scale in 3D: framings of about three times their radius plus low orbit.
     case 'earth':
@@ -250,13 +273,18 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   };
   const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const stars = createStars(cssVar(container, '--c-label'));
+  // Earth's atmosphere (atmosphere.ts), with the sky color of the attitude ball: only in 3D,
+  // the map and the inset keep their flat infographic style.
+  const atmosphere = is3d ? createAtmosphere(cssVar(container, '--c-adi-sky')) : null;
   const bodies = createBodies({
     earth: cssVar(container, '--c-body-earth'),
     moon: cssVar(container, '--c-body-moon'),
     orbit: cssVar(container, '--c-label'),
     ei: cssVar(container, '--c-caution'),
-  }, isMap, is3d ? { size: '4k', anisotropy: renderer.capabilities.getMaxAnisotropy(), detail: true } : null);
+  }, isMap, is3d ? { size: '4k', anisotropy: renderer.capabilities.getMaxAnisotropy(), detail: true } : null, atmosphere ? { haze: atmosphere.haze } : null);
   bodies.setLit(is3d);
+  // The pad's own ground (padGround.ts), only in 3D: Earth leaves a hole for it.
+  const ground = is3d && bodies.groundMaterial ? createPadGround(bodies.groundMaterial) : null;
   // The entry interface ring stays on the map and the inset (where it reads as a
   // reference); in 3D it is hidden: next to the textured Earth it looked like the equator.
   bodies.eiRing.visible = !is3d;
@@ -269,14 +297,26 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   // The model only exists in 3D: the map and the inset draw the spacecraft as a 2D icon.
   const model = is3d ? createVehicleModel(vehicleColors, anisotropy) : null;
   const debrisModels = is3d ? createDebrisModels(vehicleColors, anisotropy) : null;
+  // The Mobile Launcher and LC‑39B (pad.ts), only in 3D, in the spacecraft's pass.
+  const padModel = is3d
+    ? createPadModel(
+        {
+          steel: cssVar(container, '--c-pad-steel'),
+          base: cssVar(container, '--c-pad-base'),
+          concrete: cssVar(container, '--c-pad-concrete'),
+          tank: cssVar(container, '--c-pad-tank'),
+          hood: cssVar(container, '--c-pad-hood'),
+          spark: vehicleColors.flame,
+        },
+        anisotropy,
+      )
+    : null;
   const debrisGroup = new THREE.Group();
   scene.add(bodies.group, trails.group);
+  if (ground) scene.add(ground.mesh);
   // The ascent's exhaust wake in the air (wake.ts), at real scale: only in 3D.
   const wake = is3d ? createWake(cssVar(container, '--c-label')) : null;
   if (wake) scene.add(wake.mesh);
-  // Earth's atmosphere (atmosphere.ts), with the sky color of the attitude ball: only in 3D,
-  // the map and the inset keep their flat infographic style.
-  const atmosphere = is3d ? createAtmosphere(cssVar(container, '--c-adi-sky')) : null;
   if (atmosphere) scene.add(atmosphere.mesh);
   // The spacecraft and its parts are drawn in a pass of their own, after the scene and with
   // its depth: the same Sun plus a dim fill from the camera, so the side in shadow still shows
@@ -286,13 +326,15 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   const shipFill = new THREE.DirectionalLight(0xffffff, SHIP_FILL);
   shipScene.add(shipSun, shipFill, new THREE.AmbientLight(0xffffff, 0.16), debrisGroup);
   if (model) shipScene.add(model.group);
-  // Near the spacecraft that pass uses its own far plane (see SHIP_DEPTH_KM), and Earth only
-  // writes its depth there, so the ground still hides what is under it (the flames on the pad).
+  if (padModel) shipScene.add(padModel.group);
+  // Near the spacecraft (or the pad) that pass uses its own far plane (see SHIP_DEPTH_KM), and Earth
+  // only writes its depth there, so the ground still hides what is under it (the flames on the pad).
+  // The pad's ground writes its depth there too, at the same precision as the spacecraft.
   const shipCamera = new THREE.PerspectiveCamera();
-  const earthDepthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
-  const earthDepth = new THREE.Mesh(bodies.earth.geometry, earthDepthMaterial);
+  const earthDepth = new THREE.Mesh(bodies.earth.geometry, bodies.earthDepthMaterial);
   earthDepth.matrixAutoUpdate = false;
   shipScene.add(earthDepth);
+  if (ground) shipScene.add(ground.depth);
   const overlay = createOverlay(container);
   const rig: CameraRig = is3d ? createPerspectiveRig(renderer.domElement) : createOrthoRig(renderer.domElement);
   // The inset is static. The map has zoom (wheel or pinch, towards the cursor) and can be
@@ -338,6 +380,19 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   /** Heading the spacecraft is drawn with (drawing frame), smoothed between frames. */
   let heading: Vec3 | null = null;
   let lastT = -Infinity;
+  /** Weight of the pad camera (0 = orbit camera, 1 = pad camera); AUTO moves it smoothly. */
+  let padWeight = 0;
+  let lastCameraSetting: CameraMode | null = null;
+  let lastCameraT = -Infinity;
+  /** The pad camera's field of view is reset to frame the rocket the next time it is placed. */
+  let padFovPending = true;
+  /** Sea-level point under the launch site (scene units) and the pad's axes in the drawing frame. */
+  const padOrigin = new THREE.Vector3();
+  let axes = padAxes(0);
+  const fixedEye = new THREE.Vector3();
+  const fixedTarget = new THREE.Vector3();
+  const fixedUp = new THREE.Vector3();
+  const fixedView = { eye: fixedEye, target: fixedTarget, up: fixedUp };
   let frameCount = 0;
   let lastTime = performance.now();
   let raf = 0;
@@ -382,6 +437,21 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     tmp.subVectors(pos, center);
     const min = radius * (1 + 1e-6) + pos.length() * 0.05;
     if (tmp.length() < min) pos.copy(center).addScaledVector(tmp.normalize(), min);
+  };
+  /** East-north-up meters from the pad's sea-level point to scene units. */
+  const enuToScene = (p: Vec3, out: THREE.Vector3): THREE.Vector3 =>
+    out
+      .copy(padOrigin)
+      .addScaledVector(vy.set(axes.east.x, axes.east.y, axes.east.z), p.x * M_TO_SCENE)
+      .addScaledVector(vy.set(axes.north.x, axes.north.y, axes.north.z), p.y * M_TO_SCENE)
+      .addScaledVector(vy.set(axes.up.x, axes.up.y, axes.up.z), p.z * M_TO_SCENE);
+  /** Over the pad's ground (with its relief), the orbit camera stays a little above it. */
+  const keepAboveGround = (pos: THREE.Vector3): void => {
+    tmp.subVectors(pos, padOrigin).divideScalar(M_TO_SCENE);
+    const t3 = { x: tmp.x, y: tmp.y, z: tmp.z };
+    const enu = { x: dot(t3, axes.east), y: dot(t3, axes.north), z: dot(t3, axes.up) };
+    const lifted = liftAboveGround(enu, Math.max(1, (0.05 * pos.length()) / M_TO_SCENE));
+    if (lifted !== enu) enuToScene(lifted, pos);
   };
 
   const draw = (now: number): void => {
@@ -446,16 +516,24 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
         }
       }
     } else {
-      const mode: FixedMode = settings.cameraMode !== 'auto' ? settings.cameraMode : 'ship';
+      const mode = effectiveCameraMode(settings.cameraMode, s.t);
       const radius = defaultRadius(mode, rotating, s.vehicle);
       camera = { mode, radius };
       const cameraKey = `${settings.cameraMode}|${mode}|${radius}|${settings.frame}`;
       if (cameraKey !== lastCameraKey) {
         // Only reframes when the mode or the stage changes: in between, the manual zoom is respected.
         rig.setViewRadius(radius);
-        if (mode === 'ship') aimFromSide(rig.camera.position, s);
+        if (mode === 'ship') aimFromSide(rig.control.position, s);
+        if (mode === 'pad') padFovPending = true;
         lastCameraKey = cameraKey;
       }
+      // Pad camera weight: a mode picked by hand, or time going back, switches at once; AUTO
+      // handing over from the pad to the spacecraft camera blends over PAD_BLEND_S real seconds.
+      const target = mode === 'pad' ? 1 : 0;
+      if (settings.cameraMode !== lastCameraSetting || s.t < lastCameraT) padWeight = target;
+      else padWeight += Math.max(-dt / PAD_BLEND_S, Math.min(dt / PAD_BLEND_S, target - padWeight));
+      lastCameraSetting = settings.cameraMode;
+      lastCameraT = s.t;
     }
 
     // --- Drawing frame and floating origin ---
@@ -470,16 +548,16 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     const headingTarget = sense !== 0 ? scale(displayVelocityDir(s.ship.r, s.ship.v, s.t, base), sense) : shipDir;
     heading = !heading || s.t < lastT ? headingTarget : turnToward(heading, headingTarget, 1 - Math.exp(-dt / HEADING_SMOOTHING));
     lastT = s.t;
-    // While the core stage is attached, the model rests on its base (the nozzles) so that
-    // on the pad the rocket sits on the ground; the camera looks at its center.
+    // While the core stage is attached, the model hangs from the base of the boosters' aft skirts
+    // (the simulated point), so on the pad it rests on the support posts; the camera looks at its center.
     const anchorBase = !cfg.coreSeparated;
-    const shipCenterKm = anchorBase ? vehicleExtent(cfg).length / 2 / 1000 : 0;
+    const shipCenterKm = anchorBase ? (vehicleExtent(cfg).center - PAD_ANCHOR_STATION) / 1000 : 0;
     const focus = (): Vec3 => {
       if (isMap) {
         const pan = rig.getPan();
         return { x: mapCenter.x + pan.x, y: mapCenter.y + pan.y, z: 0 };
       }
-      if (camera.mode === 'ship') return add(toDisplayFrame(s.ship.r, s.t, base), scale(shipDir, shipCenterKm));
+      if (camera.mode === 'ship' || camera.mode === 'pad') return add(toDisplayFrame(s.ship.r, s.t, base), scale(shipDir, shipCenterKm));
       if (camera.mode === 'earth') return toDisplayFrame(earth.r, s.t, base);
       if (camera.mode === 'moon') return toDisplayFrame(moon.r, s.t, base);
       return rotating ? scale(add(toDisplayFrame(earth.r, s.t, base), toDisplayFrame(moon.r, s.t, base)), 0.5) : ZERO;
@@ -492,6 +570,14 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     // Earth rotates with the pad: that way the launch site always falls on a
     // vertex of the sphere and the rocket rests on the ground, not on a lower facet.
     bodies.earth.rotation.z = EARTH_ROTATION_IN_PLANE * s.t - frameAngle;
+    // The pad's frame turns with Earth's mesh (its local +y is the pad). Its sea-level point is
+    // computed in double precision, relative to the floating origin like everything else.
+    axes = padAxes(bodies.earth.rotation.z);
+    padOrigin.copy(bodies.earth.position).addScaledVector(vx.set(axes.up.x, axes.up.y, axes.up.z), R_EARTH * KM_TO_SCENE);
+    ground?.place(padOrigin, axes, M_TO_SCENE);
+    padModel?.place(padOrigin, axes, M_TO_SCENE);
+    // Arms, tail masts and igniter sparks: a function of the mission time only (pad.ts).
+    padModel?.animate(s.t);
     // Synchronous rotation: the Moon's near side (longitude 0 of its map, local +x)
     // always faces Earth. Libration is ignored.
     bodies.moon.rotation.z = Math.atan2(bodies.earth.position.y - bodies.moon.position.y, bodies.earth.position.x - bodies.moon.position.x);
@@ -509,8 +595,8 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     bodies.moonOrbit.rotation.z = -frameAngle;
     // In the rotating frame the Moon barely moves: its orbit adds nothing.
     // With the spacecraft camera the orbital plane is seen edge-on and the lunar orbit and the
-    // sphere of influence were just a line on the horizon: hidden there.
-    const shipCamera3d = is3d && camera.mode === 'ship';
+    // sphere of influence were just a line on the horizon: hidden there, and from the pad camera.
+    const shipCamera3d = is3d && (camera.mode === 'ship' || camera.mode === 'pad');
     bodies.moonOrbit.visible = !rotating && !shipCamera3d;
     bodies.soiRing.visible = !shipCamera3d;
 
@@ -601,15 +687,37 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     overlay.setMarkers(is3d ? NO_MARKERS : s.markers, eventNames);
     if (is3d) {
       const shipPxNow = (shipLengthM * M_TO_SCENE * Math.min(width, height)) / 2 / viewRadiusScene;
-      rig.setZoomSpeed(shipCamera3d ? shipZoomSpeed(shipPxNow) : 1);
+      rig.setZoomSpeed(camera.mode === 'ship' ? shipZoomSpeed(shipPxNow) : 1);
+      // Pad camera: on the ground by the pad, with the local vertical up, looking a bit below the
+      // vehicle's center so the ground under it shows; it follows the rocket as it climbs.
+      if (padWeight > 0) {
+        enuToScene(padCameraEye(), fixedEye);
+        const lengthM = vehicleExtent(cfg).length;
+        fixedTarget.set(shipDir.x, shipDir.y, shipDir.z).multiplyScalar(-0.15 * lengthM * M_TO_SCENE);
+        fixedUp.set(axes.up.x, axes.up.y, axes.up.z);
+        if (padFovPending) {
+          // The vehicle fills ~60 % of the height; the wheel zooms from there.
+          const d = fixedEye.distanceTo(fixedTarget) / M_TO_SCENE;
+          rig.setFixedFov(1.6 * THREE.MathUtils.radToDeg(2 * Math.atan(lengthM / 2 / d)));
+          padFovPending = false;
+        }
+        const w = padWeight * padWeight * (3 - 2 * padWeight);
+        rig.setFixedView(fixedView, w);
+      } else {
+        rig.setFixedView(null, 0);
+      }
     }
-    rig.update();
-    if (is3d) {
-      // The camera never ends up inside a body (at real scale, near the spacecraft in
-      // low orbit, the surface is meters away): it is pushed outside, along the vertical.
-      keepOutside(rig.camera.position, bodies.earth.position, R_EARTH * KM_TO_SCENE);
-      keepOutside(rig.camera.position, bodies.moon.position, R_MOON * KM_TO_SCENE);
-    }
+    // The orbit camera never ends up inside a body (at real scale, near the spacecraft in
+    // low orbit, the surface is meters away) nor under the pad's ground: it is pushed outside, along the vertical.
+    rig.update(
+      is3d
+        ? (position) => {
+            keepOutside(position, bodies.earth.position, R_EARTH * KM_TO_SCENE);
+            keepOutside(position, bodies.moon.position, R_MOON * KM_TO_SCENE);
+            keepAboveGround(position);
+          }
+        : undefined,
+    );
     rig.camera.updateMatrixWorld();
     const pxPerScene = Math.min(width, height) / 2 / viewRadiusScene;
     const es = getLocale() === 'es';
@@ -643,29 +751,49 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     });
 
     // --- Drawing: star background and, on top, the scene ---
+    const cam = rig.camera;
+    const reach = SHIP_DEPTH_KM * KM_TO_SCENE;
+    const padDistance = cam.position.distanceTo(padOrigin);
+    // The pad is drawn only near the camera, in the precise pass; meanwhile the ground leaves the
+    // flame trench open for it (in the main pass too, so the trench shows through the ground).
+    const padNear = padModel !== null && cam instanceof THREE.PerspectiveCamera && padDistance < reach;
+    ground?.setTrench(padNear);
     renderer.clear();
-    stars.render(renderer, rig.camera, width / height, frameAngle);
+    stars.render(renderer, cam, width / height, frameAngle);
     renderer.clearDepth();
-    renderer.render(scene, rig.camera);
+    renderer.render(scene, cam);
     if (model) {
       // The fill comes from the camera's side (the scene origin is the point it looks at).
-      shipFill.position.copy(rig.camera.position);
-      const cam = rig.camera;
-      const reach = SHIP_DEPTH_KM * KM_TO_SCENE;
-      const distance = cam.position.distanceTo(model.group.position);
-      if (cam instanceof THREE.PerspectiveCamera && distance < reach) {
+      shipFill.position.copy(cam.position);
+      const shipDistance = cam.position.distanceTo(model.group.position);
+      const shipNear = cam instanceof THREE.PerspectiveCamera && shipDistance < reach;
+      if (padModel) padModel.group.visible = false;
+      if (!shipNear) {
+        // Far from the camera: the spacecraft and its parts with the scene's camera and depth.
+        earthDepth.visible = false;
+        if (ground) ground.depth.visible = false;
+        model.group.visible = true;
+        debrisGroup.visible = true;
+        renderer.render(shipScene, cam);
+      }
+      if ((shipNear || padNear) && cam instanceof THREE.PerspectiveCamera) {
         shipCamera.copy(cam);
-        shipCamera.far = distance + reach;
+        shipCamera.far = Math.max(shipNear ? shipDistance : 0, padNear ? padDistance : 0) + reach;
         shipCamera.updateProjectionMatrix();
-        // Earth's world matrix as the main pass just computed it.
+        // Earth's and the ground's world matrices as the main pass just computed them.
         earthDepth.matrix.copy(bodies.earth.matrixWorld);
         earthDepth.matrixWorldNeedsUpdate = true;
         earthDepth.visible = true;
+        if (ground) {
+          ground.depth.matrix.copy(ground.mesh.matrixWorld);
+          ground.depth.matrixWorldNeedsUpdate = true;
+          ground.depth.visible = true;
+        }
+        model.group.visible = shipNear;
+        debrisGroup.visible = shipNear;
+        if (padModel) padModel.group.visible = padNear;
         renderer.clearDepth();
         renderer.render(shipScene, shipCamera);
-      } else {
-        earthDepth.visible = false;
-        renderer.render(shipScene, cam);
       }
     }
   };
@@ -685,7 +813,8 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
       stars.dispose();
       model?.dispose();
       debrisModels?.dispose();
-      earthDepthMaterial.dispose();
+      ground?.dispose();
+      padModel?.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     },

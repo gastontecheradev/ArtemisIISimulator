@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { CameraMode, ViewDim, createTrajectoryView, insetTarget } from '../render/scene';
+import { CameraMode, ViewDim, createTrajectoryView, effectiveCameraMode, insetTarget } from '../render/scene';
 import { tick } from '../sim/commands';
 import { useT } from './i18n';
 import { MapHud } from './panel/MapHud';
 import { getViewSettings, setCamera, setViewState, simStore, useSim, useViewState } from './store';
 
-export const CAMERA_MODES: readonly CameraMode[] = ['auto', 'overview', 'ship', 'earth', 'moon'];
+/** In the order of the toolbar and of the keys 1–6. */
+export const CAMERA_MODES: readonly CameraMode[] = ['auto', 'overview', 'ship', 'earth', 'moon', 'pad'];
 
 interface GroupProps<T extends string> {
   title: string;
@@ -98,7 +99,7 @@ export function TrajectoryView({ onCredits, onTutorial, onGuides }: { onCredits:
           <Group title={t('vw.camera')} options={CAMERA_MODES.map((id) => ({ id, label: t(`cam.${id}`) }))} value={view.camera['3d']} onChange={(mode) => setCamera('3d', mode)} />
         </div>
         <div className="legend">
-          <span className="hint">{t('vw.hint3d')}</span>
+          <span className="hint">{t(effectiveCameraMode(view.camera['3d'], s.t) === 'pad' ? 'vw.hintPad' : 'vw.hint3d')}</span>
         </div>
       </section>
       <div className="legend legend-colors">

@@ -1,5 +1,6 @@
 import { BURN_LEAD_TIME, MET_E6_PROX_OPS_START } from '../../sim/constants';
 import { Locale } from '../../sim/i18n';
+import { MET_ALS } from '../../sim/mission/countdown';
 import { SimState } from '../../sim/state';
 
 export interface TourStep {
@@ -71,6 +72,8 @@ const e7 = (s: SimState): SimState['maneuvers']['E7'] => s.maneuvers.E7;
 const fired = (s: SimState): boolean => ['committed', 'burning', 'done'].includes(e7(s).status);
 /** PLAY, if the simulation is paused. */
 const playIfPaused = (s: SimState): string | null => (s.clock.running ? null : 'play');
+/** During the terminal count: PLAY, then ×10 until the automated sequencer lowers it to ×1 at T‑33 s. */
+const countdownWarp = (s: SimState): string | null => playIfPaused(s) ?? (s.t < MET_ALS && s.clock.warp < 10 ? 'warp-10' : null);
 /** High warp: ×1000 if it is still low (unless the simulation lowered it on its own for a burn); then, PLAY. */
 const highWarp = (s: SimState): string | null => (s.clock.warp < 100 && s.warpRestore === null ? 'warp-1000' : playIfPaused(s));
 /** The Conf ΔV key if Procs is on screen; if not, the Procs key under a display to open it. */
@@ -189,9 +192,9 @@ const STEPS_EN = (): TourStep[] => [
   {
     target: 'time',
     title: 'LIFTOFF',
-    body: <p>Press <b>PLAY</b>. The RS‑25 engines start six seconds before T‑0; at T‑0 the boosters ignite and the rocket leaves the pad.</p>,
+    body: <p>Press <b>PLAY</b> and set the warp to <b>×10</b>: the terminal count starts at T‑10 min and runs by itself. At T‑33 s the warp drops back to ×1; the RS‑25 engines start at T‑6.36 s, and at T‑0 the boosters ignite and the rocket leaves the pad.</p>,
     until: (s) => s.clock.running && s.t > 0,
-    press: playIfPaused,
+    press: countdownWarp,
   },
   {
     target: 'view-3d',
@@ -356,9 +359,9 @@ const STEPS_ES = (): TourStep[] => [
   {
     target: 'time',
     title: 'DESPEGUE',
-    body: <p>Apretá <b>PLAY</b>. Los RS‑25 arrancan seis segundos antes de T‑0; en T‑0 encienden los boosters y el cohete sale de la plataforma.</p>,
+    body: <p>Apretá <b>PLAY</b> y poné el warp en <b>×10</b>: la cuenta final empieza en T‑10 min y corre sola. En T‑33 s el warp vuelve a ×1; los RS‑25 arrancan en T‑6,36 s, y en T‑0 encienden los boosters y el cohete sale de la plataforma.</p>,
     until: (s) => s.clock.running && s.t > 0,
-    press: playIfPaused,
+    press: countdownWarp,
   },
   {
     target: 'view-3d',
