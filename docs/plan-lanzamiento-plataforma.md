@@ -1,7 +1,7 @@
 # Plan: lanzamiento desde la plataforma
 
 **Pedido (Gastón, sesión 40):** planificar el lanzamiento del cohete desde la base, con el modelo 3D de la plataforma, las animaciones de la nave y de la base, el humo, la información y los controles del panel, el tutorial y los demás lugares que toca la funcionalidad. También evaluar cómo mejorar la textura del terreno cercano.
-**Fecha:** 2026-11-21. **Estado:** etapa 1 (cuenta final) hecha en la sesión 41; lo que cambió al implementarla está en la decisión 45 de `process.md`. Etapa 0 completa en la sesión 42 (imágenes, elevación, brazos de la torre medidos y posiciones en el suelo de OpenStreetMap, ver §2). Etapa 2 (suelo y cámara PLATAFORMA) hecha en la sesión 43; lo que cambió respecto de §4.2 y §4.6 está en la decisión 47 de `process.md`. Decisiones D1–D9 tomadas: Gastón aceptó todas las recomendaciones (sesión 40).
+**Fecha:** 2026-11-21. **Estado:** etapa 1 (cuenta final) hecha en la sesión 41; lo que cambió al implementarla está en la decisión 45 de `process.md`. Etapa 0 completa en la sesión 42 (imágenes, elevación, brazos de la torre medidos y posiciones en el suelo de OpenStreetMap, ver §2). Etapa 2 (suelo y cámara PLATAFORMA) hecha en la sesión 43; lo que cambió respecto de §4.2 y §4.6 está en la decisión 47 de `process.md`. Etapa 3 (modelo del ML‑1 y de LC‑39B, apoyo en los postes) hecha en la sesión 44; lo que cambió respecto de §4.3 está en la decisión 48 de `process.md` y en "Cómo quedó" (§4.3). Decisiones D1–D9 tomadas: Gastón aceptó todas las recomendaciones (sesión 40).
 **Cómo se armó:** se leyó el código (`sim/state.ts`, `sim/advance.ts`, `sim/capcom.ts`, `render/scene.ts`, `render/bodies.ts`, `render/earthDetail.ts`, `render/vehicle.ts`, `render/wake.ts`, `ui/tutorial/steps.tsx`, `ui/panel/pages/index.ts`). Se muestreó la textura `earth-day-pad` en LC‑39B y se leyeron la hoja de datos del Mobile Launcher 1 de NASA y la página de NASA con la cuenta final de Artemis II. No hay capturas, porque esta copia del proyecto no tiene `node_modules` (falta correr `npm install`).
 
 Lo que se lee directo de una fuente va sin marca. Lo que es interpretación va marcado *(interpretación)* y lo que es elección de dibujo, *(elección de dibujo)*.
@@ -165,7 +165,7 @@ Conclusión: **no hay que mover las estaciones del cohete.** Las diferencias de 
 
 **Posiciones en el suelo: OpenStreetMap** ([OSM]; consulta a la API Overpass, datos del 22/11/2026 01:40 UTC, licencia ODbL). Gastón no encontró una foto cenital de NASA y eligió usar OpenStreetMap **solo para las posiciones**, con el crédito *"Datos de posición © colaboradores de OpenStreetMap (ODbL)"* en los Créditos cuando entren a la app (etapa 3). El trazado del suelo (D6) no se calca: queda genérico. Lo mapeado en OpenStreetMap está calcado, en buena parte, de ortofotos de USGS (NAIP) y de Bing.
 
-Origen local: el centro de los seis apoyos del ML (`man_made=mast`, `tower:type=portal`: 28,6272154° N, 80,6208577° O). Los apoyos ocupan 40,3 m de este a oeste y 48,9 m de norte a sur ([ML1]: base de 41,1 × 50,3 m; coincide). No son simétricos: hay dos a +26 m, dos a −4 m y dos a −22 m al norte del centro; dónde queda el cohete sobre la base se resuelve en la etapa 3. Metros por grado: 110.830 de latitud y 97.787 de longitud.
+Origen local: el centro de los seis apoyos del ML (`man_made=mast`, `tower:type=portal`: 28,6272154° N, 80,6208577° O). En la etapa 3 se midió que el cohete está 7,5 m al sur de ese centro (`ROCKET_ON_ML`) y se agregaron de OpenStreetMap los contornos de los tres tanques (22,2, 24,7 y 22,2 m de diámetro; datos del 22/11/2026 03:07 UTC). Los apoyos ocupan 40,3 m de este a oeste y 48,9 m de norte a sur ([ML1]: base de 41,1 × 50,3 m; coincide). No son simétricos: hay dos a +26 m, dos a −4 m y dos a −22 m al norte del centro; dónde queda el cohete sobre la base se resuelve en la etapa 3. Metros por grado: 110.830 de latitud y 97.787 de longitud.
 
 | Elemento (id en OpenStreetMap) | Este | Norte | Distancia | Rumbo | Otros datos de OpenStreetMap |
 |---|---|---|---|---|---|
@@ -273,6 +273,16 @@ Se arma con el mismo método que `render/vehicle.ts`: piezas en metros, geometr�
   - La torre no toca el cohete.
   - En MET 7 s (torre despejada, 468 ft publicados) la base del cohete está por encima de la punta de la torre (~120 m).
 
+**Cómo quedó (etapa 3, sesión 44; decisión 48):**
+
+- **Orientación medida en las fotos:** ajustando el rumbo de la cámara de `launch-1.jpg` (32,5°, desde el sur‑sudoeste) y de `ML-1-image-2.jpg` (desde el oeste) contra las posiciones de OpenStreetMap, la torre queda **al norte** del cohete, los boosters al este y al oeste, y el eje del cohete **7,5 m al sur** del centro de los apoyos (`ROCKET_ON_ML`). Es la orientación que el modelo ya tenía en la plataforma (escotilla al norte). La base queda de 15,6 m al sur a 34,6 m al norte del eje (en la foto: 15,0 y 34,8).
+- **Plataforma elevada alargada:** la base del ML entraba en la cima redonda, pero el foso de 174 m no (con su profundidad habría salido a 94 m). La cima pasó a ser todo punto a menos de 60 m de un eje norte‑sur de −40 a +80 m, con el norte derivado para que el piso del foso salga a 174 m. Sigue siendo supuesto.
+- **Foso:** abierto en la plataforma desde el deflector (0,8 m al sur del hueco de la cubierta) hasta 174 m al norte, con muros, piso y bordes de hormigón; el deflector es un cuarto de círculo de 12,8 m de placas (elección de dibujo). El suelo descarta ese rectángulo solo mientras se dibuja la plataforma. El lado sur del foso no se dibuja.
+- **Huecos y postes (supuesto):** tres huecos dentro de los 34 × 64 ft publicados (RS‑25 y uno por booster) y los postes al este, oeste, norte y sur de cada booster, bajo el borde del faldón.
+- **Brazos:** en las estaciones de la foto (§2); la pieza que toca el cohete se calcula contra la superficie del modelo, a 3 cm. El CSITU va 2,2 m al oeste (la línea de LOX del modelo corre del lado de la torre) y el CSFSU termina a 9,5 m. TSMU al sur del cohete (fotos). Cables de evacuación: 400 m al oeste (supuesto).
+- **Resultado de los tests:** la escotilla queda a 0,2 m del nivel de 274 ft de [UMB]; el nivel de 240 ft cae sobre la placa del ICPS; la torre queda a más de 9 m del cohete; en MET 7 s la base del cohete está a 139,9 m y la punta de la torre a 138,7 m.
+- **Dibujo:** en la pasada de la nave, que ahora corre también con la cámara cerca de la plataforma (a menos de 50 km). La estela de humo, en la pasada principal, queda debajo de la plataforma: es para la etapa 5.
+
 ### 4.4 Animaciones
 
 Todas salen del tiempo de la cuenta (`countdownStatus`) o del estado de la simulación. Las duraciones de los movimientos son elecciones de dibujo y se marcan como tales. No se anima nada que la secuencia real no haga.
@@ -288,6 +298,26 @@ Todas salen del tiempo de la cuenta (`countdownStatus`) o del estado de la simul
 | Los umbilicales se sueltan: el CSITU, el CSFSU y el del ICPS giran hacia la torre, el OSMU se inclina hacia atrás, el estabilizador baja y se aparta, y los TSMU se retraen | T‑0 | [CNT], [UMB]; duraciones supuestas |
 | Despegue | T‑0 | física (ya existe) |
 | Escarcha de la espuma de la etapa central que se desprende al subir | opcional | elección de dibujo |
+
+**Cómo quedó (etapa 4, sesión 45; decisión 49):**
+
+- **Fuente releída:** la hoja de [UMB] se leyó entera; sus frases sobre cada pieza están citadas textualmente en `pad.ts`. El CAA *"rotates"* y *"retracts from the Orion spacecraft before launch"*. El umbilical del ICPS, el CSFSU y el CSITU *"swings away at launch"*. El OSMU *"tilts back at launch"*. El estabilizador *"drops down and away"*. Los TSMU *"tilt back before launch to ensure all hardware safely and reliably disconnects and retracts from the rocket during liftoff"*.
+- **Brazo de acceso:** en la foto desde el pararrayos del sudoeste (`ML-1-image-1`) la sala blanca retraída está al este de la torre, y la ilustración de [UMB] muestra lo mismo. Con la sala blanca en la escotilla y el brazo retraído apuntando al este, la bisagra sale en la esquina sudeste de la torre (6,08 m contra 6,10 m de la esquina). El reticulado del CAA pasa a ir en diagonal desde esa esquina hasta la sala blanca, que sigue en escuadra con la escotilla. En T‑8 min la sala blanca retrocede 1,6 m a lo largo del brazo en 10 s y el brazo gira ~124° en los 50 s siguientes. Sin ese retroceso, la sala blanca entra 1,0 m en la cubierta del LAS.
+- **En T‑0:**
+  - Las placas retroceden 0,5 m en 0,3 s.
+  - El umbilical del ICPS, el CSFSU y el CSITU giran 60° al oeste en 3 s, sobre la esquina oeste de su raíz, y quedan plegados delante de la cara de la torre. En `launch-1` las mangueras del ICPS cuelgan ahí; en el CSITU es el único sentido que aleja su placa de la etapa central.
+  - El OSMU se inclina 45° hacia arriba en 2 s y el estabilizador baja 30° en 2,5 s. Cada uno gira sobre el borde de su raíz que aleja del cohete la cara de contacto.
+  - Los TSMU meten su placa en 0,5 s, cierran una tapa (con bisagra abajo, que colgaba bajo la placa) y se inclinan 12° hacia atrás en 2 s. El momento es un supuesto: [UMB] dice "before launch" sin hora, pero las placas están conectadas hasta el despegue.
+  - Ángulos y duraciones son elecciones de dibujo.
+- **Reticulados a 1 m del cohete** (antes 0,3 m): un brazo que gira sobre una esquina de su raíz acerca primero al cohete su esquina lejana, unos 0,4 m en el del ICPS. La pieza de contacto cubre el resto.
+- **Chispas de los ROFI:** ocho encendedores en las paredes del hueco de los RS‑25, de T‑12 s a T‑0. Caen por el hueco y se ven bajo la base del ML.
+- **Determinismo:** todo es función pura del MET a través de `countdownStatus`, que agrega `accessArmTravel`. Cada pieza móvil es un grupo propio cuya matriz es la misma transformación rígida que miden los tests.
+- **Tests** (`tests/padMotion.test.ts`):
+  - Cada pieza está quieta antes de su hito, se mueve en un solo sentido y termina en su posición final.
+  - El CAA termina apuntando al este.
+  - Con la subida volada por la simulación (`flyFrom`, cada 40 ms hasta T+8 s), ninguna pieza toca el cohete: nunca baja de los 3 cm de reposo y desde T+1 s queda a 0,31 m como mínimo.
+  - Las chispas son deterministas y quedan dentro del hueco.
+- **Fuera de esta etapa:** los umbilicales del faldón de los boosters (no están en el modelo), el vapor de los venteos, el agua y la nube (etapa 5).
 
 ### 4.5 Humo, vapor y agua (`render/padCloud.ts`, nuevo)
 
@@ -344,8 +374,8 @@ Cada etapa termina con tests y build en verde, capturas headless (receta de `CLA
 | 0 | Datos e imágenes. Las hojas de datos ya están leídas ([ML1], [UMB], [39B], [CNT], [LDAY]); falta que Gastón elija las imágenes y medir en ellas lo que no está publicado | `docs/reference/16.png` y siguientes | — | chico |
 | 1 | Cuenta final en la simulación: T‑10 min, hitos (con el agua en T‑20 s), RS‑25 en T‑6,36 s, cohete sobre la cubierta y los postes, hora real del despegue (D9), Houston, log, Procs `LAUNCH`, página `Flt.Count` y barra de estado. Las constantes nuevas van en `constants.ts` con su cita, y las fuentes en `CLAUDE.md` | `sim/mission/countdown.ts`, `state.ts`, `vehicle.ts`, `advance.ts`, `capcom.ts`, `procedures.ts`, `sim/i18n.ts`, `ui/panel/pages/Count.tsx`, `pages/index.ts`, `StatusBar.tsx`, `ui/i18n.ts` | `npm run tune`. Tests: arranque en −600 s sin consumo, RS‑25 en −6,36 s, despegue reproducible, hitos ordenados y en sus T‑ publicados, warp ×1 en T‑33 s. Captura de la página | mediano |
 | 2 (**hecha**, sesión 43) | Suelo: malla polar de la Tierra, suelo propio con descarte, marco local y cámara PLATAFORMA | `render/bodies.ts`, `render/atmosphere.ts`, `render/padGround.ts`, `render/scene.ts`, `render/camera.ts`, `TrajectoryView.tsx`, `store.ts` | Tests: error de cuerda < 2 cm a 10 km de la plataforma y nunca mayor que el de la esfera actual; marco local coherente con `earthGeoMatrix`. Capturas con `?cam3d=pad` en T‑60 s y T+10 s | mediano |
-| 3 | Modelo del ML‑1 y de LC‑39B, y apoyo del cohete en los postes | `render/pad.ts`, `render/vehicle.ts` (anclaje), `scene.ts` | Tests de las comprobaciones cruzadas (4.3). Capturas con PLATAFORMA, NAVE y TIERRA | grande |
-| 4 | Animaciones de la cuenta y del despegue | `render/pad.ts`, `countdown.ts` | Capturas en T‑9 min, T‑7 min, T‑11 s, T‑1 s y T+3 s | mediano |
+| 3 (**hecha**, sesión 44) | Modelo del ML‑1 y de LC‑39B, y apoyo del cohete en los postes | `render/pad.ts`, `render/vehicle.ts` (anclaje), `scene.ts` | Tests de las comprobaciones cruzadas (4.3). Capturas con PLATAFORMA, NAVE y TIERRA | grande |
+| 4 (**hecha**, sesión 45) | Animaciones de la cuenta y del despegue | `render/pad.ts`, `countdown.ts` | Capturas en T‑9 min, T‑7 min, T‑11 s, T‑1 s y T+3 s | mediano |
 | 5 | Vapor, agua y nube del foso | `render/padCloud.ts`, `scene.ts` | Tests de la función pura: nada antes de su hito, determinista, sin partículas después de su vida. Capturas en T‑5 min, T‑3 s, T+5 s y T+20 s | mediano |
 | 6 | Textura del suelo: trazado, paleta, ruido y agua; parche regional si se elige en D6 | `render/padGround.ts`, `scripts/extract-palette.ts`, `theme.css` (y `optimize-images.ts`, `ASSETS.md`) | Capturas comparadas con las de la etapa 2 | mediano |
 | 7 | Tutorial, guías, inicio y documentación; sombras si el rendimiento alcanza | `steps.tsx`, `guides/content.tsx`, `StartScreen.tsx`, `CLAUDE.md` | Capturas con `?tour=n`; recorrido a mano por Gastón | chico |

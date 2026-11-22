@@ -20,7 +20,9 @@ import {
   LAUNCH_SITE_HEIGHT,
   PAD_ELEVATION,
   PAD_SLOPE_RUN,
+  PAD_TOP_NORTH,
   PAD_TOP_RADIUS,
+  PAD_TOP_SOUTH,
   R_EARTH,
 } from '../src/sim/constants';
 import { Vec3, add, angleBetween, cross, distance, dot, length, normalize, scale, sub, vec3 } from '../src/sim/math/vec3';
@@ -256,9 +258,15 @@ describe('The pad ground', () => {
   const rhoOf = (q: Vec3): number => Math.atan2(Math.hypot(q.x, q.y), q.z + R_M) * R_M;
 
   it('has the elevated pad on top and the sea-level sphere around it', () => {
-    expect(padRelief(0)).toBeCloseTo(PAD_ELEVATION * 1000, 9);
+    expect(padRelief(0, 0)).toBeCloseTo(PAD_ELEVATION * 1000, 9);
     expect(groundPoint(0, 0).z).toBeCloseTo(PAD_ELEVATION * 1000, 9);
-    expect(padRelief((PAD_TOP_RADIUS + PAD_SLOPE_RUN) * 1000)).toBe(0);
+    // East and west of the spine the top and the slope keep their widths; north and south they start at its ends.
+    const flat = (PAD_TOP_RADIUS + PAD_SLOPE_RUN) * 1000;
+    expect(padRelief(flat, 0)).toBe(0);
+    expect(padRelief(-flat + 1, 0)).toBeGreaterThan(0);
+    expect(padRelief(0, -(PAD_TOP_SOUTH * 1000 + flat))).toBe(0);
+    expect(padRelief(0, PAD_TOP_NORTH * 1000 + PAD_TOP_RADIUS * 1000)).toBeCloseTo(PAD_ELEVATION * 1000, 9);
+    expect(padRelief(0, PAD_TOP_NORTH * 1000 + flat)).toBe(0);
     let worst = 0;
     for (let i = 0; i < pos.count; i++) {
       const q = p(i);
@@ -266,7 +274,7 @@ describe('The pad ground', () => {
       const h = heightOf(q);
       // The skirt hangs below the edge; the rest follows the relief over the curved Earth.
       if (rho > GROUND_RADIUS_M && h < -0.01) continue;
-      worst = Math.max(worst, Math.abs(h - padRelief(rho)));
+      worst = Math.max(worst, Math.abs(h - padRelief(q.x, q.y)));
     }
     expect(worst).toBeLessThan(0.002);
   });
@@ -311,8 +319,8 @@ describe('The pad ground', () => {
   it('places the pad camera at eye height on the ground, off the elevated pad', () => {
     const eye = padCameraEye();
     expect(rhoOf(eye)).toBeCloseTo(PAD_CAMERA.distance, 6);
-    expect(heightOf(eye) - padRelief(rhoOf(eye))).toBeCloseTo(PAD_CAMERA.eyeHeight, 6);
-    expect(padRelief(PAD_CAMERA.distance)).toBe(0);
+    expect(heightOf(eye) - padRelief(eye.x, eye.y)).toBeCloseTo(PAD_CAMERA.eyeHeight, 6);
+    expect(padRelief(eye.x, eye.y)).toBe(0);
     // South-southwest of the launch point.
     expect(eye.x).toBeLessThan(0);
     expect(eye.y).toBeLessThan(eye.x);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PAD_ELEVATION, PAD_SLOPE_RUN, PAD_TOP_RADIUS, R_EARTH } from '../sim/constants';
+import { FLAME_TRENCH, ML1, PAD_ELEVATION, PAD_SLOPE_RUN, PAD_TOP_NORTH, PAD_TOP_RADIUS, PAD_TOP_SOUTH, R_EARTH } from '../sim/constants';
 import { Vec3, rotateZ, vec3 } from '../sim/math/vec3';
 
 /*
@@ -58,26 +58,55 @@ export function padAxes(earthRotation: number): { east: Vec3; north: Vec3; up: V
   };
 }
 
-/**
- * Height of the ground above the sea-level sphere (m) at an arc distance `rho` (m) from the launch
- * point: the elevated pad (PAD_TOP_RADIUS, PAD_SLOPE_RUN, assumptions) with a cosine shoulder.
- */
-export function padRelief(rho: number): number {
-  const top = PAD_TOP_RADIUS * 1000;
-  const run = PAD_SLOPE_RUN * 1000;
-  const h = PAD_ELEVATION * 1000;
-  if (rho <= top) return h;
-  if (rho >= top + run) return 0;
-  return h * 0.5 * (1 + Math.cos((Math.PI * (rho - top)) / run));
+const TOP_M = PAD_TOP_RADIUS * 1000;
+const RUN_M = PAD_SLOPE_RUN * 1000;
+const PAD_M = PAD_ELEVATION * 1000;
+/** Ends of the elevated pad's spine (m north of the launch point): its top is every point within TOP_M of it. */
+const SPINE = { south: -PAD_TOP_SOUTH * 1000, north: PAD_TOP_NORTH * 1000 } as const;
+/** Farthest the elevated pad reaches from the launch point (m). */
+export const PAD_REACH_M = Math.max(-SPINE.south, SPINE.north) + TOP_M + RUN_M;
+
+/** Horizontal distance (m) from (east, north) to the elevated pad's spine, and the unit vector away from it. */
+function fromSpine(east: number, north: number): { d: number; ue: number; un: number } {
+  const dn = north - Math.min(SPINE.north, Math.max(SPINE.south, north));
+  const d = Math.hypot(east, dn);
+  return d > 1e-9 ? { d, ue: east / d, un: dn / d } : { d: 0, ue: 0, un: 0 };
 }
 
-/** Slope of `padRelief` (dh/drho). */
-function padReliefSlope(rho: number): number {
-  const top = PAD_TOP_RADIUS * 1000;
-  const run = PAD_SLOPE_RUN * 1000;
-  if (rho <= top || rho >= top + run) return 0;
-  return -PAD_ELEVATION * 1000 * 0.5 * (Math.PI / run) * Math.sin((Math.PI * (rho - top)) / run);
+/**
+ * Height of the ground above the sea-level sphere (m) at `east`, `north` (m from the launch point):
+ * the elevated pad (constants.ts, assumptions) with a cosine shoulder. The flame trench is cut out
+ * of it separately (TRENCH, render/pad.ts).
+ */
+export function padRelief(east: number, north: number): number {
+  const { d } = fromSpine(east, north);
+  if (d <= TOP_M) return PAD_M;
+  if (d >= TOP_M + RUN_M) return 0;
+  return PAD_M * 0.5 * (1 + Math.cos((Math.PI * (d - TOP_M)) / RUN_M));
 }
+
+/** Gradient of `padRelief` (dh/d east, dh/d north). */
+function padReliefGradient(east: number, north: number): [number, number] {
+  const { d, ue, un } = fromSpine(east, north);
+  if (d <= TOP_M || d >= TOP_M + RUN_M) return [0, 0];
+  const slope = -PAD_M * 0.5 * (Math.PI / RUN_M) * Math.sin((Math.PI * (d - TOP_M)) / RUN_M);
+  return [slope * ue, slope * un];
+}
+
+/**
+ * The flame trench, in meters from the launch point (launch plan §4.3): it runs north from under the
+ * rocket with the [39B] width and depth. Its south end is the top of the flame deflector, 0.8 m south of
+ * the deck opening (drawing choice: the deflector turns the plume from straight down to due north over
+ * the trench's depth); its north end is where its floor meets the slope (PAD_TOP_NORTH). While the pad
+ * is drawn, the ground leaves this rectangle out and render/pad.ts draws the walls, floor and deflector.
+ * The south side of the trench (old concrete, [39B]) is not drawn: no source gives its size.
+ */
+export const TRENCH = {
+  halfWidth: FLAME_TRENCH.width * 500,
+  south: -(ML1.openingWidth * 500 + 0.8),
+  north: FLAME_TRENCH.length * 1000,
+  floor: (PAD_ELEVATION - FLAME_TRENCH.depth) * 1000,
+} as const;
 
 /**
  * Point at arc distance `rho` (m, along the sea-level sphere) from the launch point, towards
@@ -93,7 +122,16 @@ export function surfacePoint(rho: number, azimuth: number, height: number): Vec3
 }
 
 /** The ground's surface (with the relief) at arc distance `rho` towards `azimuth`. */
-export const groundPoint = (rho: number, azimuth: number): Vec3 => surfacePoint(rho, azimuth, padRelief(rho));
+export const groundPoint = (rho: number, azimuth: number): Vec3 =>
+  surfacePoint(rho, azimuth, padRelief(rho * Math.sin(azimuth), rho * Math.cos(azimuth)));
+
+/**
+ * Up coordinate (m, east-north-up from the sea-level point under the launch site) of the ground's
+ * surface at `east`, `north`, with the relief and the curvature: where something standing there rests.
+ */
+export function groundZ(east: number, north: number): number {
+  return surfacePoint(Math.hypot(east, north), Math.atan2(east, north), padRelief(east, north)).z;
+}
 
 /**
  * A point (east-north-up m) lifted, along its vertical, to at least `margin` m above the ground,
@@ -105,7 +143,7 @@ export function liftAboveGround(p: Vec3, margin: number): Vec3 {
   const rho = Math.atan2(horizontal, cz) * R_M;
   if (rho > GROUND_RADIUS_M) return p;
   const r = Math.hypot(horizontal, cz);
-  const min = R_M + padRelief(rho) + margin;
+  const min = R_M + padRelief(p.x, p.y) + margin;
   if (r >= min) return p;
   const k = min / r;
   return vec3(p.x * k, p.y * k, cz * k - R_M);
@@ -124,7 +162,8 @@ export const PAD_CAMERA = { distance: 400, azimuthDeg: 200, eyeHeight: 2 } as co
 /** Eye of the pad camera, in east-north-up meters from the sea-level point under the launch site. */
 export function padCameraEye(): Vec3 {
   const az = (PAD_CAMERA.azimuthDeg * Math.PI) / 180;
-  return surfacePoint(PAD_CAMERA.distance, az, padRelief(PAD_CAMERA.distance) + PAD_CAMERA.eyeHeight);
+  const d = PAD_CAMERA.distance;
+  return surfacePoint(d, az, padRelief(d * Math.sin(az), d * Math.cos(az)) + PAD_CAMERA.eyeHeight);
 }
 
 /** Radii of the ground's rings (m): fine across the elevated pad, then growing 5 % per ring to the edge. */
@@ -132,7 +171,7 @@ export function groundRings(): number[] {
   // The outer polygon circumscribes a circle GROUND_OVERLAP_M past the one Earth discards.
   const edge = (GROUND_RADIUS_M + GROUND_OVERLAP_M) / Math.cos(Math.PI / GROUND_SECTORS);
   const fine = 2.5;
-  const fineUntil = (PAD_TOP_RADIUS + PAD_SLOPE_RUN) * 1000 + 30;
+  const fineUntil = PAD_REACH_M + 30;
   const rings = [0];
   let r = 0;
   while (r + fine <= fineUntil) {
@@ -158,7 +197,7 @@ export function buildGroundGeometry(): THREE.BufferGeometry {
   const cols = GROUND_SECTORS + 1;
   const edge = rings[rings.length - 1];
   // Rows: the rings, then the edge again (with horizontal normals) and the bottom of the skirt.
-  const rows: { rho: number; height: number; skirt: boolean }[] = rings.map((rho) => ({ rho, height: padRelief(rho), skirt: false }));
+  const rows: { rho: number; height: number | null; skirt: boolean }[] = rings.map((rho) => ({ rho, height: null, skirt: false }));
   rows.push({ rho: edge, height: 0, skirt: true }, { rho: edge, height: -SKIRT_M, skirt: true });
   const n = rows.length * cols;
   const positions = new Float32Array(n * 3);
@@ -167,20 +206,23 @@ export function buildGroundGeometry(): THREE.BufferGeometry {
   let k = 0;
   for (const row of rows) {
     const a = row.rho / R_M;
-    const slope = row.skirt ? 0 : padReliefSlope(row.rho);
     for (let j = 0; j < cols; j++) {
       const az = (2 * Math.PI * j) / GROUND_SECTORS;
-      const p = surfacePoint(row.rho, az, row.height);
-      // Radial (up at that point) and horizontal-outwards unit vectors there.
       const sx = Math.sin(az);
       const sy = Math.cos(az);
+      // The relief goes by east and north; within the pad's ground the arc and the horizontal distance differ by less than a millimeter.
+      const height = row.height ?? padRelief(row.rho * sx, row.rho * sy);
+      const [ge, gn] = row.skirt ? [0, 0] : padReliefGradient(row.rho * sx, row.rho * sy);
+      const p = surfacePoint(row.rho, az, height);
+      // Radial (up at that point) and horizontal-outwards unit vectors there.
       const radial = vec3(Math.sin(a) * sx, Math.sin(a) * sy, Math.cos(a));
       const outward = vec3(Math.cos(a) * sx, Math.cos(a) * sy, -Math.sin(a));
-      // Normal of the height field over the sphere: radial·(R + h)/R − (dh/drho)·outward. The skirt faces out.
+      // Normal of the height field over the sphere: radial·(R + h)/R − ∇h (east and north, which tilt
+      // by less than 1e-3 rad from the local ones across the ground). The skirt faces out.
       const nr = row.skirt ? outward : vec3(
-        radial.x * (1 + row.height / R_M) - slope * outward.x,
-        radial.y * (1 + row.height / R_M) - slope * outward.y,
-        radial.z * (1 + row.height / R_M) - slope * outward.z,
+        radial.x * (1 + height / R_M) - ge,
+        radial.y * (1 + height / R_M) - gn,
+        radial.z * (1 + height / R_M),
       );
       const nl = Math.hypot(nr.x, nr.y, nr.z);
       positions.set([p.x, p.y, p.z], k * 3);
@@ -215,6 +257,31 @@ export function buildGroundGeometry(): THREE.BufferGeometry {
   return geometry;
 }
 
+/**
+ * Makes `material` (drawn on the ground's mesh, whose positions are east-north-up meters) discard its
+ * fragments inside the flame trench while `on.value` is 1: the pad model draws the trench there.
+ */
+function cutTrench(material: THREE.Material, on: { value: number }): void {
+  const before = material.onBeforeCompile.bind(material);
+  const key = material.customProgramCacheKey.bind(material);
+  material.customProgramCacheKey = () => `${key()}|trench`;
+  const f = (x: number): string => x.toFixed(3);
+  material.onBeforeCompile = (shader, renderer) => {
+    before(shader, renderer);
+    shader.uniforms.uTrenchOn = on;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vTrenchEN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvTrenchEN = position.xy;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vTrenchEN;\nuniform float uTrenchOn;')
+      .replace(
+        '#include <clipping_planes_fragment>',
+        `#include <clipping_planes_fragment>
+        if (uTrenchOn > 0.5 && abs(vTrenchEN.x) < ${f(TRENCH.halfWidth)} && vTrenchEN.y > ${f(TRENCH.south)} && vTrenchEN.y < ${f(TRENCH.north)}) discard;`,
+      );
+  };
+}
+
 export interface PadGround {
   /** The ground with its color, for the main pass. */
   readonly mesh: THREE.Mesh;
@@ -225,6 +292,8 @@ export interface PadGround {
    * axes are the pad's east, north and up in the drawing frame, `metersToScene` the scale.
    */
   place(origin: THREE.Vector3, axes: { east: Vec3; north: Vec3; up: Vec3 }, metersToScene: number): void;
+  /** Opens the flame trench in the ground (while the pad model, which draws it, is drawn) or closes it. */
+  setTrench(open: boolean): void;
   dispose(): void;
 }
 
@@ -234,9 +303,12 @@ export function createPadGround(material: THREE.Material): PadGround {
   // In the transparent queue only for its place in it: after the atmosphere (−1), before the
   // exhaust wake and the lines (0). It stays opaque (opacity 1) and writes its depth.
   material.transparent = true;
+  const trenchOn = { value: 0 };
+  cutTrench(material, trenchOn);
   const mesh = new THREE.Mesh(geometry, material);
   mesh.renderOrder = -0.5;
   const depthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
+  cutTrench(depthMaterial, trenchOn);
   const depth = new THREE.Mesh(geometry, depthMaterial);
   depth.matrixAutoUpdate = false;
   const basis = new THREE.Matrix4();
@@ -251,6 +323,9 @@ export function createPadGround(material: THREE.Material): PadGround {
       basis.makeBasis(e.set(axes.east.x, axes.east.y, axes.east.z), nn.set(axes.north.x, axes.north.y, axes.north.z), u.set(axes.up.x, axes.up.y, axes.up.z));
       mesh.quaternion.setFromRotationMatrix(basis);
       mesh.scale.setScalar(metersToScene);
+    },
+    setTrench(open) {
+      trenchOn.value = open ? 1 : 0;
     },
     dispose() {
       geometry.dispose();

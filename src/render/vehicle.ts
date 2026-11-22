@@ -64,6 +64,30 @@ const ST = {
   srbExit: -82.35,
 } as const;
 
+/**
+ * Station of the simulated point while the core stage is attached: the base of the boosters' aft
+ * skirts, which rest on the Mobile Launcher's support posts on the pad (LAUNCH_SITE_HEIGHT). Below
+ * it the nozzles reach into the deck's exhaust opening (render/pad.ts).
+ */
+export const PAD_ANCHOR_STATION = ST.srbBase;
+
+/** Stations (m) the pad model's cross-checks use (tests/pad.test.ts). */
+export const STATIONS = {
+  lasTip: ST.lasTip,
+  icpsTop: ST.icpsTop,
+  icpsExit: ST.icpsExit,
+  lvsaTop: ST.lvsaTop,
+  coreTop: ST.coreTop,
+  loxTankTop: ST.loxTankTop,
+  intertankTop: ST.intertankTop,
+  intertankBottom: ST.intertankBottom,
+  engineSection: ST.engineSection,
+  coreBase: ST.coreBase,
+  rs25Exit: ST.rs25Exit,
+  srbBase: ST.srbBase,
+  srbExit: ST.srbExit,
+} as const;
+
 /** Radii (m): published diameters [SLS] [ORG]; the adapter and the fairings from the illustrations. */
 const RAD = {
   cm: 2.515,
@@ -77,7 +101,7 @@ const RAD = {
 } as const;
 
 /** Distance from the core stage axis to each booster's axis (m). */
-const SRB_Y = 6.3;
+export const SRB_Y = 6.3;
 
 /** Ends of each part along the x axis (m) and its lateral offset. */
 const EXTENT: Readonly<Record<PartId, { x0: number; x1: number; y: number }>> = {
@@ -90,6 +114,8 @@ const EXTENT: Readonly<Record<PartId, { x0: number; x1: number; y: number }>> = 
   SRB_L: { x0: ST.srbExit, x1: ST.srbTip, y: SRB_Y },
   SRB_R: { x0: ST.srbExit, x1: ST.srbTip, y: -SRB_Y },
 };
+
+const ALL_PART_IDS = Object.keys(EXTENT) as PartId[];
 
 const partsOf = (cfg: VehicleConfig): PartId[] => {
   const parts: PartId[] = ['CM'];
@@ -287,13 +313,19 @@ const framedWindow = (x0: number, x1: number, theta: number, w: number): Opening
 ];
 
 /**
+ * The crew hatch on the back shell: stations x0–x1, at θ = 0 (+z, the side that faces the Mobile
+ * Launcher tower on the pad), `w` m wide.
+ */
+export const CM_HATCH = { x0: 0.8, x1: 1.95, theta: 0, w: 0.95 } as const;
+
+/**
  * Back shell openings: two docking windows and two side windows (blueprint front view), the
  * hatch between them with its window, and twelve RCS thruster ports in four groups.
  */
 const CM_OPENINGS: readonly Opening[] = [
   ...[-0.16, 0.16].flatMap((t) => framedWindow(2.15, 2.5, t, 0.3)),
   ...[-1.2, 1.2].flatMap((t) => framedWindow(1.5, 1.9, t, 0.34)),
-  opening(0.8, 1.95, 0, 0.95, 'outline'),
+  opening(CM_HATCH.x0, CM_HATCH.x1, CM_HATCH.theta, CM_HATCH.w, 'outline'),
   ...framedWindow(1.35, 1.65, 0, 0.28),
   ...QUARTERS.flatMap((t) => [
     opening(2.72, 2.84, t, 0.14, 'port'),
@@ -485,6 +517,48 @@ const PROFILE: Readonly<Record<PartId, readonly Piece[]>> = {
   SRB_L: srbPieces(EXTENT.SRB_L.y),
   SRB_R: srbPieces(EXTENT.SRB_R.y),
 };
+
+/** Radius of a revolution outline at station x (the largest where it is crossed more than once), or −1. */
+function outlineRadius(pts: readonly P2[], x: number): number {
+  let r = -1;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [x0, r0] = pts[i];
+    const [x1, r1] = pts[i + 1];
+    if (x < Math.min(x0, x1) || x > Math.max(x0, x1)) continue;
+    r = Math.max(r, Math.abs(x1 - x0) < 1e-9 ? Math.max(r0, r1) : r0 + ((r1 - r0) * (x - x0)) / (x1 - x0));
+  }
+  return r;
+}
+
+/**
+ * How far north (m from the core stage's axis) the full rocket's surface reaches at station x and
+ * `east` m east of the axis, as it stands on the pad: there the model's +z is north and +y east (the
+ * attitude at T‑0 has body +Z east, see `orient` in scene.ts), so the crew hatch faces the Mobile
+ * Launcher tower. −Infinity where nothing is. It takes the revolution pieces (each around its own
+ * axis); the boxes and rods of `EXTRAS` stand out a few tens of centimeters at most.
+ */
+export function padSurfaceNorth(x: number, east: number): number {
+  let north = -Infinity;
+  for (const id of ALL_PART_IDS)
+    for (const p of PROFILE[id]) {
+      const r = outlineRadius(p.pts, x);
+      const de = east - (p.y ?? 0);
+      if (r > Math.abs(de)) north = Math.max(north, (p.z ?? 0) + Math.sqrt(r * r - de * de));
+    }
+  return north;
+}
+
+/** The same towards the south: how far south (m, negative) the surface reaches, or +Infinity where nothing is. */
+export function padSurfaceSouth(x: number, east: number): number {
+  let south = Infinity;
+  for (const id of ALL_PART_IDS)
+    for (const p of PROFILE[id]) {
+      const r = outlineRadius(p.pts, x);
+      const de = east - (p.y ?? 0);
+      if (r > Math.abs(de)) south = Math.min(south, (p.z ?? 0) - Math.sqrt(r * r - de * de));
+    }
+  return south;
+}
 
 /**
  * Flame of each engine, at its nozzle exit (x, y, z) and towards −x. `glow` is its opacity:
@@ -1077,7 +1151,8 @@ function acquireKit(colors: VehicleColors, anisotropy: number): { kit: Kit; rele
 export interface VehicleModel {
   /**
    * Group to orient and position. Its origin is the vehicle's center in the current
-   * configuration or, with `anchorBase`, the base (the nozzles), so the rocket rests on the pad.
+   * configuration or, with `anchorBase`, PAD_ANCHOR_STATION (the base of the boosters' aft skirts),
+   * so on the pad the rocket rests on the Mobile Launcher's support posts.
    */
   readonly group: THREE.Group;
   /** Shows the attached parts and the flames of the firing engines. Returns the current length (m). */
@@ -1113,7 +1188,7 @@ export function createVehicleModel(colors: VehicleColors, anisotropy = 1): Vehic
       });
       for (const [id, list] of flames) for (const f of list) f.visible = running.includes(id);
       const ext = vehicleExtent(cfg);
-      stack.position.x = anchorBase ? -ext.x0 : -ext.center;
+      stack.position.x = anchorBase ? -PAD_ANCHOR_STATION : -ext.center;
       return ext.length;
     },
     dispose: release,
@@ -1167,7 +1242,7 @@ interface Shape {
 
 /** Drawing order: whatever sits inside another piece in 3D goes first (the ICPS nozzle inside the core stage adapter, the capsule under the tower). */
 const DRAW_ORDER: readonly PartId[] = ['SM', 'CM', 'ICPS', 'CORE', 'SRB_L', 'SRB_R', 'FAIRING', 'LAS'];
-const ALL_PARTS = Object.keys(EXTENT) as PartId[];
+const ALL_PARTS = ALL_PART_IDS;
 
 /** Outline of a piece seen from the side (an arc counts as a whole turn); a flat ring shows nothing. */
 function pieceShape(p: Piece): Shape | null {

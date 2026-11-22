@@ -286,6 +286,7 @@ const EN = {
   'cr.model':
     'Educational simulator: the trajectory is computed with a simplified model (circular restricted three-body problem, finite burns, layered atmosphere) and does not reproduce the actual flight data.',
   'cr.sources': 'Vehicle data and timeline: NASA, "Space Launch System Reference Guide for Artemis II" (2025), "Artemis II Reference Guide" (2026) and "Artemis II Overview Timeline" (2026).',
+  'cr.osm': 'Position data of the launch pad (lightning masts, water tower, tanks and Mobile Launcher mounts) © OpenStreetMap contributors (ODbL):',
   'cr.font': 'Typeface IBM Plex Mono (SIL Open Font License). Graphics with Three.js (MIT).',
   'cr.close': 'CLOSE',
   // Tutorial
@@ -571,6 +572,7 @@ const ES: Readonly<Record<UiKey, string>> = {
   'cr.model':
     'Simulador educativo: la trayectoria se calcula con un modelo simplificado (problema restringido de tres cuerpos circular, encendidos de duración finita, atmósfera por capas) y no reproduce los datos reales de vuelo.',
   'cr.sources': 'Datos del vehículo y cronograma: NASA, "Space Launch System Reference Guide for Artemis II" (2025), "Artemis II Reference Guide" (2026) y "Artemis II Overview Timeline" (2026).',
+  'cr.osm': 'Datos de posición de la plataforma (pararrayos, torre de agua, tanques y apoyos del Mobile Launcher) © colaboradores de OpenStreetMap (ODbL):',
   'cr.font': 'Tipografía IBM Plex Mono (SIL Open Font License). Gráficos con Three.js (MIT).',
   'cr.close': 'CERRAR',
   'tour.step': 'PASO {n} DE {total}',

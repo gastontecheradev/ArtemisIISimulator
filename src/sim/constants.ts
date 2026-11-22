@@ -19,6 +19,8 @@
  * - [LDAY] NASA, "Live Artemis II Launch Day Updates", blog, 2026-04-01.
  * - [LC50] NASA, "NASA Celebrates 50th Anniversary of Launch Complex 39B, Prepares for Next
  *   Mission", 2017-06-14 (nasa.gov/centers-and-facilities/kennedy/): pad elevation.
+ * - [OSM] © OpenStreetMap contributors (ODbL), via the Overpass API: only the positions (and the
+ *   tank footprints) of elements around LC‑39B, credited in the app's Credits.
  */
 
 // --- Physics ---
@@ -118,17 +120,101 @@ export const SUPPORT_POST_HEIGHT = 5 * FT_TO_KM; // 1.52 m
 export const PAD_ELEVATION = 55 * FT_TO_KM; // 16.76 m
 export const LAUNCH_SITE_HEIGHT = PAD_ELEVATION + LAUNCH_DECK_HEIGHT + SUPPORT_POST_HEIGHT; // 32.61 m (107 ft)
 /**
+ * [ML1] Mobile Launcher 1 (km). A two-story base 25 ft tall, 165 ft long and 135 ft wide on six
+ * 22 ft steel mounts (22 + 25 = 47 ft, the deck); a tower 40 ft square and ~345 ft tall with a
+ * floor every 20 ft, ~400 ft above the ground in all; an exhaust opening of 34 × 64 ft in the deck.
+ * On the pad the base's long side runs north-south: its six mounts span 40.3 m east-west and
+ * 48.9 m north-south (ML_MOUNTS). The opening's long side goes along the boosters' line, east-west
+ * (the photos in `ROCKET_ON_ML`).
+ */
+export const ML1 = {
+  baseLength: 165 * FT_TO_KM,
+  baseWidth: 135 * FT_TO_KM,
+  baseHeight: 25 * FT_TO_KM,
+  mountHeight: 22 * FT_TO_KM,
+  towerSide: 40 * FT_TO_KM,
+  towerHeight: 345 * FT_TO_KM,
+  floorSpacing: 20 * FT_TO_KM,
+  totalHeight: 400 * FT_TO_KM,
+  openingLength: 64 * FT_TO_KM,
+  openingWidth: 34 * FT_TO_KM,
+} as const;
+/** [UMB] Tail service mast umbilicals: about 33 ft tall above the deck. */
+export const TSMU_HEIGHT = 33 * FT_TO_KM;
+/**
+ * [39B] North side of the flame trench, where the new deflector sends the whole plume: ~571 ft
+ * long, 58 ft wide and 42 ft high. The same fact sheet's "Fun Facts" give a 450 ft trench; the
+ * detailed figure is used.
+ */
+export const FLAME_TRENCH = { length: 571 * FT_TO_KM, width: 58 * FT_TO_KM, depth: 42 * FT_TO_KM } as const;
+/** [39B] Three lightning masts of 600 ft. [OSM]: each is a 146.4 m lattice tower with the mast on top. */
+export const LIGHTNING_MAST_HEIGHT = 600 * FT_TO_KM;
+export const LIGHTNING_TOWER_HEIGHT = 0.1464;
+
+/**
+ * [OSM] Positions around LC‑39B from OpenStreetMap (ODbL; Overpass API, data of 2026-11-22; launch
+ * plan, §2), in km east and north of the center of the Mobile Launcher's six mounts
+ * (`man_made=mast` + `tower:type=portal`, 28.6272154° N, 80.6208577° W), with 110,830 m per degree
+ * of latitude and 97,787 m per degree of longitude. Credit in the app's Credits.
+ */
+const osm = (eastM: number, northM: number): { readonly east: number; readonly north: number } => ({ east: eastM / 1000, north: northM / 1000 });
+/** The six mounts the Mobile Launcher stands on: 40.3 m apart east-west, in pairs 26, 4 and 22 m north/south of the center. */
+export const ML_MOUNTS = [osm(-20.15, 26), osm(20.15, 26), osm(-20.15, -4), osm(20.15, -4), osm(-20.15, -22), osm(20.15, -22)] as const;
+export const LIGHTNING_MASTS = [osm(-102.9, -118.3), osm(125.1, 38.3), osm(-144.0, 66.9)] as const;
+/**
+ * The water tower: [OSM] 80.5 m tall (`height`) with a 2.4 m column (`diameter`); its description
+ * gives an 88 m tower. [39B]: ~400,000 gallons. The tank's shape is measured in `launch-1.jpg`
+ * (stage 3; ~12.8 m wide and ~8.8 m tall, scaled with the core stage): about 1,400 m³, consistent.
+ */
+export const WATER_TOWER = { ...osm(101.7, 114.5), tankTop: 0.0805, top: 0.088, column: 0.0024, tankDiameter: 0.0128, tankHeight: 0.0088 } as const;
+/** Spherical tanks: [OSM] positions and footprint diameters (the largest is probably the new LH2 tank of [39B]). */
+export const CRYO_TANKS = [
+  { ...osm(372.9, 227.7), diameter: 0.0222 }, // LH2 (way 153128950)
+  { ...osm(236.7, 319.4), diameter: 0.0247 }, // LH2 (way 901620453)
+  { ...osm(-398.5, 244.6), diameter: 0.0222 }, // LOX (way 153128951)
+] as const;
+/**
+ * Where the rocket stands on the Mobile Launcher (km from the mounts' center). Measured in stage 3
+ * on NASA photos of the pad (`docs/reference/launch/`): fitting the heading of the launch photo taken
+ * from the south-southwest (`launch-1.jpg`: two masts, the water tower and the rocket, 3 px residual)
+ * and of the side photo from the west (`ML-1-image-2.jpg`) against the OSM positions puts the core
+ * stage's axis 7–8 m south of the center and centered east-west within ~1 m. The side photo agrees:
+ * there the base reaches 15.0 m south and 34.8 m north of the axis. The same photos show the tower
+ * north of the rocket (the side it is drawn on, `ML_TOWER_FACE`) and the boosters east and west of it.
+ * The simulated launch point is this axis; the model's LC‑39B coordinates (Wikipedia) fall 27.6 m
+ * from the mounts' center and only place Earth's texture.
+ */
+export const ROCKET_ON_ML = osm(0, -7.5);
+/**
+ * Distance from the rocket's axis to the face of the Mobile Launcher tower that looks at it (km):
+ * 14.7 m, measured in the side photo (`ML-1-image-2.jpg`, stage 0, launch plan §2).
+ */
+export const ML_TOWER_FACE = 0.0147;
+
+/**
  * Shape of the elevated pad as the 3D view draws it (km), around the simulated launch point.
- * **Unverified assumption**, a placeholder: a round flat top at PAD_ELEVATION and a smooth slope
- * down to the surrounding ground, which is taken at mean sea level (the model's sphere; the
- * stage-0 photo shows the pad surface ~12–16 m above the grass, consistent). The top holds the
- * Mobile Launcher base (50.3 × 41.1 m [ML1], 32.5 m half-diagonal) with margin, and the slope ends
- * before the lightning masts (131–159 m from the ML center, OpenStreetMap; launch plan, §2). No
- * source gives the outline of the hardstand: the crawlerway ramp and the flame trench are not
- * drawn, and the ground layout is generic (D6). The physics does not use these values.
+ * **Unverified assumption**: a flat top at PAD_ELEVATION and a smooth slope down to the surrounding
+ * ground, which is taken at mean sea level (the model's sphere; the stage-0 photo shows the pad
+ * surface ~12–16 m above the grass, consistent). The top is every point within PAD_TOP_RADIUS of a
+ * north-south segment through the launch point, from PAD_TOP_SOUTH south of it to PAD_TOP_NORTH north
+ * of it (a stadium), and the slope is PAD_SLOPE_RUN long. Until stage 3 it was a circle (the segment
+ * was a point): it holds the Mobile Launcher base (its farthest corner is 40 m away), but the flame
+ * trench ([39B]: 174 m on the north side, 12.8 m deep) would have opened out of it at 94 m.
+ * - PAD_TOP_NORTH is derived: the trench floor meets the slope 174 m north of the rocket.
+ * - PAD_TOP_SOUTH: the photo from the east (`ML1-image-3.jpg`) shows the flat top edge across the
+ *   whole frame, at least ~100 m south of the rocket (qualitative).
+ * - The slope still ends before the lightning masts (≥ 125 m from the segment) and at the foot of
+ *   the water tower (OSM; launch plan, §2).
+ * No source gives the outline of the hardstand: the crawlerway ramp is not drawn, and the ground
+ * layout is generic (D6). The physics does not use these values.
  */
 export const PAD_TOP_RADIUS = 0.06; // km
 export const PAD_SLOPE_RUN = 0.05; // km
+export const PAD_TOP_SOUTH = 0.04; // km
+export const PAD_TOP_NORTH =
+  FLAME_TRENCH.length -
+  PAD_TOP_RADIUS -
+  (PAD_SLOPE_RUN * Math.acos((2 * (PAD_ELEVATION - FLAME_TRENCH.depth)) / PAD_ELEVATION - 1)) / Math.PI; // ≈ 0.080 km
 
 const hms = (h: number, m: number, s: number): number => h * 3600 + m * 60 + s;
 const dhms = (d: number, h: number, m: number, s: number): number => d * 86400 + hms(h, m, s);

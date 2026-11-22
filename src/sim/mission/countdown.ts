@@ -106,6 +106,8 @@ export interface CountdownStatus {
   /** Who runs the count: the GLS, the ALS (from T‑33 s) or nobody (after liftoff). */
   readonly mode: 'gls' | 'als' | 'flight';
   readonly accessArm: AccessArmState;
+  /** How far the crew access arm has gone (0 extended, 1 retracted), linear in time; the drawing eases it. */
+  readonly accessArmTravel: number;
   /** Boil-off vents of the core stage: open until the tanks are pressurized. */
   readonly ventsOpen: boolean;
   readonly rofi: boolean;
@@ -122,6 +124,7 @@ export function countdownStatus(t: number): CountdownStatus {
     next: i < 0 ? COUNTDOWN.length : i,
     mode: t >= 0 ? 'flight' : t >= MET_ALS ? 'als' : 'gls',
     accessArm: armT < 0 ? 'extended' : armT < ACCESS_ARM_RETRACT_DURATION ? 'retracting' : 'retracted',
+    accessArmTravel: Math.min(1, Math.max(0, armT / ACCESS_ARM_RETRACT_DURATION)),
     ventsOpen: t < MET_TANK_PRESS,
     rofi: t >= MET_ROFI && t < 0,
     water: waterT < 0 ? 'off' : waterT < WATER_DURATION ? 'flowing' : 'done',
