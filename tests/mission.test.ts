@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fly, flyFrom, withBurn } from '../scripts/lib/calibration';
 import { advance, attitudeAxes, bodyRates, cruiseSense, executeManeuver, lvlhOf, powerInputOf, produce, setManeuver } from '../src/sim/advance';
+import { capcomFeed } from '../src/sim/capcom';
 import { eulerOf } from '../src/sim/attitude';
 import { nextLinkChanges } from '../src/sim/comms';
 import { airVelocity } from '../src/sim/atmosphere';
@@ -17,6 +18,7 @@ import {
   INSERTION_ALTITUDE,
   INSERTION_ORBIT,
   INSERTION_SPEED_REL,
+  LAUNCH_SITE_HEIGHT,
   MECO_ALTITUDE,
   MET_E4_PERIGEE_RAISE,
   MET_E5_APOGEE_RAISE,
@@ -33,13 +35,15 @@ import {
 import { solveCorrection } from '../src/sim/guidance';
 import { angleBetween, length, normalize, sub } from '../src/sim/math/vec3';
 import { ASCENT_SEQUENCE } from '../src/sim/mission/ascent';
+import { COUNTDOWN, MET_ALS, countdownStatus } from '../src/sim/mission/countdown';
+import { tr } from '../src/sim/i18n';
 import { MISSION_PARAMS } from '../src/sim/mission/params';
 import { procedureView } from '../src/sim/mission/procedures';
 import { nextEvent, timelineStatus } from '../src/sim/mission/timeline';
 import { earthElements } from '../src/sim/orbit';
 import { forces } from '../src/sim/power';
 import { INITIAL_MET, SimState, altitudeOf, createInitialState, ephemerisOf } from '../src/sim/state';
-import { ENGINES, FULL_TANKS, G0, MASS, SRB_ISP, TANK, burnDuration, totalMass } from '../src/sim/vehicle';
+import { ENGINES, FULL_TANKS, G0, MASS, RS25_START_BEFORE_LIFTOFF, SRB_ISP, TANK, burnDuration, totalMass } from '../src/sim/vehicle';
 
 const P = MISSION_PARAMS;
 const DAY = 86400;
@@ -57,6 +61,8 @@ function runFrames(s0: SimState, crew: (s: SimState) => SimState, until = Infini
   let s = s0;
   for (let i = 0; i < maxFrames && !s.outcome && s.t < until; i++) {
     if (!s.clock.running) s = cmd.setWarp(cmd.play(crew(s)), 10000);
+    // The launch sequencer drops the warp to ×1 at T‑33 s; after liftoff the crew raises it again.
+    else if (s.t > 0 && s.clock.warp === 1) s = cmd.setWarp(s, 10000);
     s = cmd.tick(s, 1 / 60);
   }
   return s;
@@ -132,17 +138,29 @@ describe('ascenso simulado (E1–E3)', () => {
     expect(fe.thrust / f.thrust).toBeLessThan(0.95);
   });
 
-  it('cuenta regresiva: los RS‑25 arrancan en T‑6 s sujetos a la plataforma; los boosters en T‑0', () => {
+  it('cuenta regresiva: arranca en T‑10 min sin consumir; los RS‑25 en T‑6,36 s sujetos sobre la cubierta del ML; los boosters en T‑0', () => {
     const pad = launch();
     expect(pad.t).toBe(INITIAL_MET);
-    expect(pad.ascentEngines).toEqual(['RS25']);
+    expect(INITIAL_MET).toBe(-600);
+    expect(pad.ascentEngines).toEqual([]);
     // Mass on the pad: 2,604 t of loaded SLS + Orion (NASA guides; the model sums its parts).
     expect(totalMass(pad.vehicle, pad.propulsion.prop) / 1e6).toBeCloseTo(2.63, 1);
+    // The rocket rests on the support posts of the Mobile Launcher deck, on the pad:
+    // 55 ft above sea level + 47 ft deck + 5 ft posts = 107 ft.
+    expect(altitudeOf(pad) * 1000).toBeCloseTo(107 * 0.3048, 6);
+    // Until the RS‑25 start nothing is consumed and the rocket stays on the pad.
+    const before = flyFrom(pad, -RS25_START_BEFORE_LIFTOFF - 0.01);
+    expect(before.ascentEngines).toEqual([]);
+    expect(before.propulsion.prop).toEqual(pad.propulsion.prop);
+    expect(altitudeOf(before)).toBeCloseTo(LAUNCH_SITE_HEIGHT, 9);
+    const start = flyFrom(pad, -RS25_START_BEFORE_LIFTOFF);
+    expect(RS25_START_BEFORE_LIFTOFF).toBe(6.36);
+    expect(start.ascentEngines).toEqual(['RS25']);
     const s = flyFrom(pad, 0);
     expect(s.t).toBe(0);
-    expect(altitudeOf(s)).toBeCloseTo(0, 6);
+    expect(altitudeOf(s)).toBeCloseTo(LAUNCH_SITE_HEIGHT, 9);
     expect(s.ascentEngines).toEqual(['SRB', 'RS25']);
-    // Six seconds of RS‑25 burn core stage propellant before liftoff.
+    // 6.36 seconds of RS‑25 burn core stage propellant before liftoff.
     expect(MASS.coreProp - s.propulsion.prop[TANK.CORE]).toBeGreaterThan(4000);
     expect(MASS.coreProp - s.propulsion.prop[TANK.CORE]).toBeLessThan(9000);
     // Published liftoff thrust: 36,787 kN.
@@ -174,6 +192,80 @@ describe('ascenso simulado (E1–E3)', () => {
   it('con un guiado malo el cohete no llega a la órbita', () => {
     const bad = flyFrom(createInitialState({ ...P, ascent: { ...P.ascent, kickDeg: 25 } }, { headless: true, autoCrew: true }), 3000);
     expect(['crash', 'reentry-early']).toContain(bad.outcome?.kind);
+  });
+});
+
+describe('cuenta final', () => {
+  it('los hitos están ordenados y en sus T‑ publicados, entre T‑10 min y T‑0', () => {
+    for (let i = 1; i < COUNTDOWN.length; i++) expect(COUNTDOWN[i].met).toBeGreaterThanOrEqual(COUNTDOWN[i - 1].met);
+    const at = (id: string): number => COUNTDOWN.find((m) => m.id === id)!.met;
+    expect(at('GLS')).toBe(INITIAL_MET);
+    expect(at('CAA')).toBe(-8 * 60);
+    expect(at('PRESS')).toBe(-6 * 60);
+    expect(at('FTS')).toBe(-(4 * 60 + 30));
+    expect(at('ALS')).toBe(-33);
+    expect(at('WATER')).toBe(-20);
+    expect(at('ROFI')).toBe(-12);
+    expect(at('RS25')).toBe(-6.36);
+    expect(at('LIFTOFF')).toBe(0);
+    // Each logged milestone appears once, at its exact MET.
+    const s = flyFrom(launch(), 1);
+    for (const m of COUNTDOWN.filter((c) => c.log)) {
+      const lines = s.log.filter((l) => l.text === tr(m.log!));
+      expect(lines.map((l) => l.t)).toEqual([m.met]);
+    }
+  });
+
+  it('el estado de tierra sale del tiempo: brazo, venteos, ROFI, agua, umbilicales', () => {
+    expect(countdownStatus(-590)).toMatchObject({ mode: 'gls', accessArm: 'extended', ventsOpen: true, rofi: false, water: 'off', attached: true });
+    expect(countdownStatus(-470).accessArm).toBe('retracting');
+    expect(countdownStatus(-300)).toMatchObject({ accessArm: 'retracted', ventsOpen: false });
+    expect(countdownStatus(-15)).toMatchObject({ mode: 'als', rofi: false, water: 'flowing' });
+    expect(countdownStatus(-5)).toMatchObject({ rofi: true, attached: true });
+    expect(countdownStatus(1)).toMatchObject({ mode: 'flight', rofi: false, attached: false, next: COUNTDOWN.length });
+  });
+
+  it('el despegue es reproducible: el mismo estado en T‑0 avanzando de un tirón o en tramos desparejos', () => {
+    const once = flyFrom(launch(), 0);
+    let s = cmd.play(launch());
+    for (let k = 0; s.t < 0; k++) s = advance(s, Math.min([7.3, 0.9, 41, 2.2][k % 4], -s.t), Infinity);
+    expect(s.t).toBe(0);
+    for (let i = 0; i < s.propulsion.prop.length; i++) expect(s.propulsion.prop[i]).toBeCloseTo(once.propulsion.prop[i], 6);
+    expect(length(sub(s.ship.r, once.ship.r))).toBeLessThan(1e-12);
+  });
+
+  it('en T‑33 s el warp baja a ×1 y el frame termina ahí; con la tripulación automática no', () => {
+    let s = cmd.setWarp(cmd.play(cmd.reset(P)), 10000);
+    // One frame at ×10000 is 167 s: without the cut it would skip the launch.
+    while (s.t < MET_ALS) s = cmd.tick(s, 1 / 60);
+    expect(s.t).toBe(MET_ALS);
+    expect(s.clock.warp).toBe(1);
+    expect(s.clock.running).toBe(true);
+    let auto = cmd.setWarp(cmd.play(cmd.reset(P, { autoCrew: true })), 1000);
+    while (auto.t < 0) auto = cmd.tick(auto, 1 / 60);
+    expect(auto.clock.warp).toBe(1000);
+  });
+
+  it('habla Kennedy hasta que el cohete despeja la torre y Houston desde ahí', () => {
+    const feed = capcomFeed(flyFrom(launch(), -1));
+    expect(feed.length).toBeGreaterThanOrEqual(5);
+    expect(feed.every((m) => m.from === 'KSC')).toBe(true);
+    const after = capcomFeed(flyFrom(launch(), S.pitchStart + 1));
+    expect(after.filter((m) => m.from === 'HOUSTON').map((m) => m.t)).toEqual([S.pitchStart]);
+  });
+
+  it('Procs muestra la cuenta y el ascenso (LAUNCH) hasta la separación de la etapa central', () => {
+    const pad = cmd.reset(P);
+    expect(pad.proc.activeId).toBe('LAUNCH');
+    const view = procedureView(pad, 'LAUNCH');
+    expect(view.steps.every((st) => st.kind === 'AUTO')).toBe(true);
+    expect(view.steps[0].done).toBe(true);
+    expect(view.steps.slice(1).some((st) => st.done)).toBe(false);
+    const meco = flyFrom(cmd.play(cmd.reset(P, { autoCrew: true })), S.meco + 1);
+    expect(meco.proc.activeId).toBe('LAUNCH');
+    expect(procedureView(meco, 'LAUNCH').steps.filter((st) => !st.done).map((st) => st.key)).toEqual(['core']);
+    const orbit = flyFrom(meco, S.coreSeparation + 1);
+    expect(orbit.proc.activeId).toBe('SEP_ICPS');
   });
 });
 
@@ -591,7 +683,7 @@ describe('línea de tiempo y warp', () => {
   });
 
   it('el warp baja a ×10 antes de E4 y vuelve solo al valor anterior', () => {
-    let s = cmd.setWarp(cmd.play(cmd.reset(P)), 1000);
+    let s = cmd.setWarp(cmd.play(flyFrom(cmd.reset(P), 1)), 1000);
     let min = Infinity;
     for (let i = 0; i < 100000 && s.t < MET_E4_PERIGEE_RAISE + 60; i++) {
       s = cmd.tick(s, 1 / 60);

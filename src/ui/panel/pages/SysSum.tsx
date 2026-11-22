@@ -3,7 +3,7 @@ import { nextLinkChanges } from '../../../sim/comms';
 import { ATTITUDE_TOLERANCE } from '../../../sim/constants';
 import { formatMet, formatNumber } from '../../../sim/format';
 import { angleBetween } from '../../../sim/math/vec3';
-import { phaseLabel } from '../../../sim/mission/phases';
+import { displayPhaseLabel } from '../../../sim/mission/phases';
 import { dvAvailable, orionDvRemaining } from '../../../sim/propulsion';
 import { SimState, ephemerisOf } from '../../../sim/state';
 import { FULL_TANKS, TANK, TankName } from '../../../sim/vehicle';
@@ -56,7 +56,7 @@ export function SysSum({ s }: { s: SimState }): JSX.Element {
   return (
     <div className="page syssum">
       <div className="ss-head">
-        <Cell label={t('ss.phase')} value={phaseLabel(s.phase)} />
+        <Cell label={t('ss.phase')} value={displayPhaseLabel(s.t, s.phase)} />
         <Cell label="LOS" value={link.los !== null ? formatMet(link.los) : '—'} />
         <Cell label="AOS" value={link.aos !== null ? formatMet(link.aos) : '—'} />
         <Cell label={t('ss.totalProp')} value={formatNumber(orionProp, 0)} unit="kg" />

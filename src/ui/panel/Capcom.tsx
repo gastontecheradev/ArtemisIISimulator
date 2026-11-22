@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { capcomFeed } from '../../sim/capcom';
 import { formatMet } from '../../sim/format';
+import { ASCENT_SEQUENCE } from '../../sim/mission/ascent';
 import { SimState } from '../../sim/state';
 import { useT } from '../i18n';
 
 /**
- * Mission control window: what Houston keeps telling the crew. The
- * messages are derived from the state (see sim/capcom.ts); during loss of signal the
+ * Mission control window: what the ground keeps telling the crew. Kennedy's launch control
+ * speaks until the rocket clears the tower (its lines carry "KSC") and Houston from there on.
+ * The messages are derived from the state (see sim/capcom.ts); during loss of signal the
  * window goes silent.
  */
 export function Capcom({ s }: { s: SimState }): JSX.Element {
@@ -26,7 +28,7 @@ export function Capcom({ s }: { s: SimState }): JSX.Element {
   return (
     <section className="event-log mcc" data-tour="mcc">
       <span className="log-title">
-        {t('mcc.title')} · HOUSTON
+        {s.t < ASCENT_SEQUENCE.pitchStart ? `${t('mcc.titleLaunch')} · KENNEDY` : `${t('mcc.title')} · HOUSTON`}
         {s.comms.los && <span className="mcc-los"> · {t('mcc.nolink')}</span>}
       </span>
       <div
@@ -40,7 +42,10 @@ export function Capcom({ s }: { s: SimState }): JSX.Element {
         {feed.map((m, i) => (
           <div key={i} className={`log-line mcc-${m.kind}`}>
             <span className="log-t">{formatMet(m.t)}</span>
-            <span className="log-x">{m.text}</span>
+            <span className="log-x">
+              {m.from === 'KSC' && <span className="mcc-from">KSC · </span>}
+              {m.text}
+            </span>
           </div>
         ))}
       </div>

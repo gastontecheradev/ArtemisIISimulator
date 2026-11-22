@@ -10,6 +10,15 @@
  * - [ASC] NASA, ascent and Earth-orbit infographic for Artemis II, same as the [SLS] table.
  * - [JPL] NASA/JPL, Horizons ephemeris system (ssd.jpl.nasa.gov/horizons), accessed 2026-11-15.
  * - [ORG] NASA, "Orion Reference Guide", 2022-11-10 (predates Artemis I; Orion data).
+ * - [CNT] NASA, "NASA Releases Artemis II Moon Mission Launch Countdown", 2026-03-26
+ *   (nasa.gov/general/nasa-releases-artemis-ii-moon-mission-launch-countdown/): terminal count
+ *   from T‑10 min; the times are "approximate".
+ * - [ML1] NASA, "Mobile Launcher 1" fact sheet, FS‑2024‑11‑997‑KSC.
+ * - [UMB] NASA, "Mobile Launcher Tower Umbilicals and Accessories" fact sheet, FS‑2021‑08‑727‑KSC.
+ * - [39B] NASA, "Launch Complex 39B" fact sheet, FS‑2021‑08‑726‑KSC.
+ * - [LDAY] NASA, "Live Artemis II Launch Day Updates", blog, 2026-04-01.
+ * - [LC50] NASA, "NASA Celebrates 50th Anniversary of Launch Complex 39B, Prepares for Next
+ *   Mission", 2017-06-14 (nasa.gov/centers-and-facilities/kennedy/): pad elevation.
  */
 
 // --- Physics ---
@@ -51,12 +60,14 @@ export const MODEL_PLANE_AZIMUTH_DEG = 90;
 export const EARTH_ROTATION_IN_PLANE = EARTH_ROTATION_RATE * Math.cos((LAUNCH_LATITUDE_DEG * Math.PI) / 180);
 
 /**
- * [AV] Opening of the 2026-04-01 window (06:24 PM EDT = 22:24 UTC): "1.28 Hours
- * Before Sunset" at the pad. The model lifts off at that instant (MET 0) and the Sun
- * direction comes from this figure: sunset happens when Earth's rotation brings the
+ * Liftoff time and the Sun. [AV]: the 2026-04-01 window opened at 06:24 PM EDT (22:24 UTC),
+ * "1.28 Hours Before Sunset" at the pad. [LDAY]: Artemis II lifted off at 06:35 PM EDT
+ * (22:35 UTC), 11 minutes later. The model lifts off at the real time (MET 0 = 22:35 UTC) and
+ * the Sun direction comes from this figure: sunset happens when Earth's rotation brings the
  * pad's vertical to 90° from the Sun.
  */
-export const LAUNCH_BEFORE_SUNSET = 1.28 * 3600; // s
+export const LIFTOFF_AFTER_WINDOW_OPEN = 11 * 60; // s
+export const LAUNCH_BEFORE_SUNSET = 1.28 * 3600 - LIFTOFF_AFTER_WINDOW_OPEN; // s
 /** Earth's mean motion around the Sun (sidereal year of 365.256 days): the Sun advances ~0.99°/day. */
 export const EARTH_ORBIT_RATE = (2 * Math.PI) / (365.256 * 86400); // rad/s
 
@@ -64,7 +75,9 @@ export const EARTH_ORBIT_RATE = (2 * Math.PI) / (365.256 * 86400); // rad/s
  * [JPL] Moon's orbit during the mission: Keplerian ellipse (two bodies, GM_EARTH + GM_MOON)
  * least-squares fitted to the geocentric vectors from JPL Horizons (Moon, code
  * 301, center 500@399), hourly from 2026-04-01 12:00 to 2026-04-12 12:00 UTC,
- * projected onto their mean plane. MET 0 = 2026-04-01 22:24 UTC ([AV]).
+ * projected onto their mean plane. The fit was made with its time origin at the window
+ * opening, 2026-04-01 22:24 UTC ([AV]); the model's MET 0 is the actual liftoff, 11 min
+ * later ([LDAY]), so the apogee passage is 11 min earlier in MET.
  * Error against Horizons: < 400 km in distance between MET 3 d and 6 d (flyby), 1,860 km
  * at most (at liftoff) and < 811 km along the whole orbit.
  * The Moon passed apogee on 2026-04-07 (404,964 km): during the flyby it was ~5 %
@@ -75,8 +88,8 @@ export const MOON_ORBIT = {
   /** Semi-major axis (km). */
   a: 382778.4,
   e: 0.05777,
-  /** MET of the apogee passage (s): 5.2027 d. */
-  apogeeMet: 5.2027 * 86400,
+  /** MET of the apogee passage (s): 5.2027 d after the window opening. */
+  apogeeMet: 5.2027 * 86400 - LIFTOFF_AFTER_WINDOW_OPEN,
 } as const;
 
 /** Radius of the lunar sphere of influence (Laplace): D·(GM_MOON/GM_EARTH)^(2/5). */
@@ -87,6 +100,23 @@ export const FT_TO_KM = 0.3048 / 1000;
 export const MPH_TO_KMS = 0.44704 / 1000;
 export const NM_TO_KM = 1.852;
 export const MI_TO_KM = 1.609344;
+
+// --- Launch pad ---
+/**
+ * Height of the rocket's support on the pad above the model's sea-level sphere (km): the
+ * boosters' aft skirts rest on the vehicle support posts, on the Mobile Launcher deck. The
+ * simulated position on the pad is that point.
+ * - [ML1] Deck (level 0) 47 ft above the ground.
+ * - [UMB] Vehicle support posts: 5 ft tall, four per booster, under the aft skirts.
+ * - [LC50] Pad elevation: "Pad B sits seven feet higher (55 feet) above mean sea level" (the
+ *   pad surface the Mobile Launcher stands on). Shuttle-era NASA fact sheets give the same 55 ft
+ *   for the Pad B hardstand; no source says whether the rebuild for SLS changed it. A side photo
+ *   of the pad (stage 0) shows its surface ~12–16 m above the surrounding ground, consistent.
+ */
+export const LAUNCH_DECK_HEIGHT = 47 * FT_TO_KM; // 14.33 m
+export const SUPPORT_POST_HEIGHT = 5 * FT_TO_KM; // 1.52 m
+export const PAD_ELEVATION = 55 * FT_TO_KM; // 16.76 m
+export const LAUNCH_SITE_HEIGHT = PAD_ELEVATION + LAUNCH_DECK_HEIGHT + SUPPORT_POST_HEIGHT; // 32.61 m (107 ft)
 
 const hms = (h: number, m: number, s: number): number => h * 3600 + m * 60 + s;
 const dhms = (d: number, h: number, m: number, s: number): number => d * 86400 + hms(h, m, s);

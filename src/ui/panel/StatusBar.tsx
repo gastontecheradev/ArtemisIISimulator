@@ -1,6 +1,8 @@
 import { selectProcedure } from '../../sim/commands';
 import { formatDuration, formatMet } from '../../sim/format';
-import { phaseLabel } from '../../sim/mission/phases';
+import { tr } from '../../sim/i18n';
+import { COUNTDOWN, countdownStatus } from '../../sim/mission/countdown';
+import { displayPhaseLabel } from '../../sim/mission/phases';
 import { nextEvent } from '../../sim/mission/timeline';
 import { SimState } from '../../sim/state';
 import { useT } from '../i18n';
@@ -10,16 +12,27 @@ import { procedureFor } from './faults';
 /** Flight day (FD01 on launch day), as in NASA's timeline. */
 const flightDay = (t: number): number => Math.max(1, Math.floor(t / 86400) + 1);
 
+/** Next milestone of the terminal count (only on the pad), with its name in capitals for the bar. */
+function nextMilestone(s: SimState): { label: string; t: number } | null {
+  if (s.t >= 0 || s.outcome) return null;
+  const i = countdownStatus(s.t).next;
+  const m = COUNTDOWN[i];
+  return m ? { label: tr(`cd.${m.id}`).toUpperCase(), t: m.met } : null;
+}
+
 /**
  * Status bar (a simulator element, not part of the real cockpit): MET, phase, COMM, simulation
- * speed, next event and the active alarms. The Master Alarm is on the flight control plate,
+ * speed, next event (during the terminal count, its next milestone: the negative MET already
+ * counts down to liftoff) and the active alarms. The Master Alarm is on the flight control plate,
  * as on Orion's center panel.
  */
 export function StatusBar({ s }: { s: SimState }): JSX.Element {
   const t = useT();
   const comm = s.comms.los ? 'LOS' : s.comms.network;
   const run = s.outcome ? t('st.run.end') : s.clock.running ? t('st.run.run') : t('st.run.pause');
-  const next = nextEvent(s);
+  const event = nextEvent(s);
+  const milestone = nextMilestone(s);
+  const next = milestone ?? (event && { label: `${event.id} ${event.short}`, t: event.t });
   return (
     <header className="status" data-tour="status">
       <div className="status-row">
@@ -29,7 +42,7 @@ export function StatusBar({ s }: { s: SimState }): JSX.Element {
         </div>
         <div className="st-cell">
           <span className="st-label">{t('st.phase')}</span>
-          <span className="st-value">{phaseLabel(s.phase)}</span>
+          <span className="st-value">{displayPhaseLabel(s.t, s.phase)}</span>
         </div>
         <div className="st-cell">
           <span className="st-label">COMM</span>
@@ -44,7 +57,7 @@ export function StatusBar({ s }: { s: SimState }): JSX.Element {
         {next && (
           <div className="st-cell">
             <span className="st-label">
-              {t('st.next')} · {next.id} {next.short}
+              {t('st.next')} · {next.label}
             </span>
             <span className="st-value cmd">T−{formatDuration(next.t - s.t)}</span>
           </div>

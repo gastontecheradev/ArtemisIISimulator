@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatMet } from '../../sim/format';
-import { phaseLabel } from '../../sim/mission/phases';
+import { displayPhaseLabel } from '../../sim/mission/phases';
 import { SimState } from '../../sim/state';
 import { useT } from '../i18n';
 import { getPanelUi, setPanelUi, usePanelUi } from '../store';
@@ -89,13 +89,29 @@ function Menu({ group, active, where }: { group: PageGroup; active: PageId; wher
  * split into an upper and a lower half, each with one page. The top keys choose the upper page,
  * the bottom ones the lower page (the first of each row, ▲, switches between the Flt and Sys page
  * groups), and the side ones run the actions of each page. Brt and Dim set the screen brightness.
+ * With `countdown`, the upper half shows Flt.Count while the rocket is on the pad and goes back to
+ * its initial page at liftoff (if Flt.Count is still on screen).
  */
-export function DisplayUnit({ s, initial, index }: { s: SimState; initial: [PageId, PageId]; index: number }): JSX.Element {
+export function DisplayUnit({ s, initial, index, countdown = false }: { s: SimState; initial: [PageId, PageId]; index: number; countdown?: boolean }): JSX.Element {
   const t = useT();
   const ui = usePanelUi();
-  const [upper, setUpper] = useState<PageId>(initial[0]);
+  const onPad = countdown && s.t < 0 && !s.outcome;
+  const firstUpper: PageId = onPad ? 'COUNT' : initial[0];
+  const [upper, setUpper] = useState<PageId>(firstUpper);
   const [lower, setLower] = useState<PageId>(initial[1]);
-  const [upperGroup, setUpperGroup] = useState<PageGroup>(PAGES[initial[0]].group);
+  const [upperGroup, setUpperGroup] = useState<PageGroup>(PAGES[firstUpper].group);
+  const wasOnPad = useRef(onPad);
+  useEffect(() => {
+    if (wasOnPad.current === onPad) return;
+    wasOnPad.current = onPad;
+    if (onPad) {
+      setUpper('COUNT');
+      setUpperGroup(PAGES.COUNT.group);
+    } else if (upper === 'COUNT') {
+      setUpper(initial[0]);
+      setUpperGroup(PAGES[initial[0]].group);
+    }
+  }, [onPad, upper, initial]);
   const [lowerGroup, setLowerGroup] = useState<PageGroup>(PAGES[initial[1]].group);
   const upperActions = PAGES[upper].actions(s);
   const lowerActions = PAGES[lower].actions(s);
@@ -138,7 +154,7 @@ export function DisplayUnit({ s, initial, index }: { s: SimState; initial: [Page
             <i>M</i>
             {formatMet(s.t)}
           </span>
-          <span className="t-phase">{phaseLabel(s.phase)}</span>
+          <span className="t-phase">{displayPhaseLabel(s.t, s.phase)}</span>
           <span className={unacked > 0 ? 't-count on' : 't-count'} title={t('du.faults')}>
             {unacked}
           </span>

@@ -2,11 +2,11 @@ import { airVelocity } from './atmosphere';
 import { Ephemeris, createKeplerEphemeris } from './bodies';
 import { DeltaV, ZERO_DV } from './burns';
 import { CommsStatus, commsStatus } from './comms';
-import { EARTH_ROTATION_IN_PLANE, R_EARTH } from './constants';
-import { RS25_START_BEFORE_LIFTOFF } from './vehicle';
+import { EARTH_ROTATION_IN_PLANE, LAUNCH_SITE_HEIGHT, R_EARTH } from './constants';
 import { tr } from './i18n';
 import { ShipState } from './integrator';
 import { Vec3, add, distance, vec3 } from './math/vec3';
+import { COUNT_START } from './mission/countdown';
 import { MissionParams } from './mission/params';
 import { Phase } from './mission/phases';
 import { EventId } from './mission/timeline';
@@ -46,7 +46,7 @@ export interface TrailPoint {
 }
 
 export type ManeuverId = 'E7' | 'E8' | 'E9' | 'E10' | 'E12' | 'MAN';
-export type ProcedureId = 'SEP_ICPS' | ManeuverId | 'SEP_CM';
+export type ProcedureId = 'LAUNCH' | 'SEP_ICPS' | ManeuverId | 'SEP_CM';
 export type ManeuverStatus = 'pending' | 'committed' | 'burning' | 'done' | 'missed';
 
 export interface Maneuver {
@@ -304,24 +304,26 @@ export interface InitOptions {
   autoCrew?: boolean;
 }
 
-/** Initial MET: the RS‑25s start 6 s before liftoff, with the rocket held down on the pad. */
-export const INITIAL_MET = -RS25_START_BEFORE_LIFTOFF;
+/** Initial MET: T‑10 min, when the ground launch sequencer starts the terminal count. */
+export const INITIAL_MET = COUNT_START;
 
 /**
- * Position and velocity of the pad at instant `t`: on Earth's +y axis
- * at MET 0 (up on the map, so the rocket climbs upwards on screen), rotating
- * east with Earth's rotation.
+ * Position and velocity of the rocket on the pad at instant `t`: on Earth's +y axis
+ * at MET 0, rotating east with Earth's rotation. The point is where the boosters' aft
+ * skirts rest, on the support posts of the Mobile Launcher deck (LAUNCH_SITE_HEIGHT).
  */
 export function padState(t: number, eph: Ephemeris): ShipState {
   const earth = eph.earth(t);
   const a = EARTH_ROTATION_IN_PLANE * t;
-  const r = add(earth.r, vec3(-R_EARTH * Math.sin(a), R_EARTH * Math.cos(a), 0));
+  const radius = R_EARTH + LAUNCH_SITE_HEIGHT;
+  const r = add(earth.r, vec3(-radius * Math.sin(a), radius * Math.cos(a), 0));
   return { r, v: airVelocity(r, earth) };
 }
 
 /**
- * Initial state: the full rocket on the pad, six seconds before
- * liftoff. On play the RS‑25s start and at T‑0 the boosters ignite.
+ * Initial state: the full rocket on the pad at T‑10 min, with the terminal count starting.
+ * The RS‑25s start at T‑6.36 s and the boosters ignite at T‑0 (see the countdown breakpoints
+ * in advance.ts).
  */
 export function createInitialState(params: MissionParams, opts: InitOptions = {}): SimState {
   const eph = ephemerisOf({ params });
@@ -337,7 +339,7 @@ export function createInitialState(params: MissionParams, opts: InitOptions = {}
     warpRestore: null,
     vehicle: CONFIG_AT_LIFTOFF,
     propulsion: INITIAL_PROPULSION,
-    ascentEngines: ['RS25'],
+    ascentEngines: [],
     ascentTan: null,
     burn: null,
     // On the pad the rocket points up (pitch 90° in LVLH), with no roll or yaw.
@@ -362,7 +364,7 @@ export function createInitialState(params: MissionParams, opts: InitOptions = {}
       E4: { id: 'E4', met: b.E4.met, dv: b.E4.dv, hold: b.E4.hold ?? false, status: 'pending' },
       E5: { id: 'E5', met: b.E5.met, dv: b.E5.dv, hold: b.E5.hold ?? false, status: 'pending' },
     },
-    proc: { activeId: 'SEP_ICPS', cursor: null, skipped: [], advanced: false },
+    proc: { activeId: 'LAUNCH', cursor: null, skipped: [], advanced: false },
     oneShots: [],
     comms: commsStatus(ship.r, INITIAL_MET, eph),
     prediction: null,
@@ -370,7 +372,7 @@ export function createInitialState(params: MissionParams, opts: InitOptions = {}
     alarms: [],
     log: [{ t: INITIAL_MET, level: 'EVENT', text: tr('log.pad'), eventId: 'E1' }],
     markers: [],
-    trail: [{ t: INITIAL_MET, r: ship.r, alt: 0, phase: 'ASCENSO', net: 'NSN', prox: false }],
+    trail: [{ t: INITIAL_MET, r: ship.r, alt: LAUNCH_SITE_HEIGHT, phase: 'ASCENSO', net: 'NSN', prox: false }],
     trailNextT: 0,
     debris: [],
     record: { apsides: [], perilune: null, ei: null, tliAt: null, icpsSepAt: null, cmSepAt: null, insertion: null, maxQ: null },

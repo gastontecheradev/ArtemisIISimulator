@@ -25,7 +25,7 @@ Open the address shown in the terminal. First you pick the language; then the gu
 
 ## How to fly
 
-1. The countdown (from T‑6 s), the ascent and the two ICPS burns are automatic, as in the real flight.
+1. The terminal count (from T‑10 min, with NASA's published milestones), the ascent and the two ICPS burns are automatic, as in the real flight.
 2. After that, the display's **Procs** page shows each procedure and its current step, highlighted in magenta.
 3. The simulation pauses on its own before each crew action. With the warp (×1 to ×10000) there is no need to wait.
 4. For a burn: confirm the Δv with the **Conf ΔV** key, raise the engine guard and throw the switch (or press **Burn ATP** on the PFD). The engine ignites on its own at the planned instant and shuts down once it has delivered the Δv. Separations need the **PYRO ARM** switch up first.

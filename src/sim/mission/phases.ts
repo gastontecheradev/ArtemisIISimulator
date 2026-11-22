@@ -14,6 +14,12 @@ export type Phase =
 /** Short label of each phase in the current language. */
 export const phaseLabel = (p: Phase): string => tr(`phase.${p}`);
 
+/**
+ * Phase label to show at MET `t`. Before liftoff it is the terminal count: not a phase of its own,
+ * because the phase also sets the trail colors and the physics, and on the pad it stays ASCENSO.
+ */
+export const displayPhaseLabel = (t: number, p: Phase): string => (t < 0 && p === 'ASCENSO' ? tr('phase.COUNT') : phaseLabel(p));
+
 const ORDER: readonly Phase[] = [
   'ASCENSO',
   'INSERCION',

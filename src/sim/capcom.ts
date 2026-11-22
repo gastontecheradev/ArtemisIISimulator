@@ -2,11 +2,15 @@ import { APOLLO_13_RECORD_DISTANCE, BURN_LEAD_TIME, CM_SEP_PROMPT_LEAD_TIME, MET
 import { formatDuration, formatMet, formatNumber } from './format';
 import { Locale, getLocale, tr } from './i18n';
 import { distance } from './math/vec3';
+import { ACCESS_ARM_RETRACT_DURATION, COUNT_START, MET_ACCESS_ARM_RETRACT, MET_ALS, MET_TANK_PRESS } from './mission/countdown';
 import { MANEUVER_TITLE } from './mission/procedures';
-import { INITIAL_MET, ManeuverId, SimState, ephemerisOf } from './state';
+import { ManeuverId, SimState, ephemerisOf } from './state';
+import { RS25_START_BEFORE_LIFTOFF } from './vehicle';
 
 /**
- * Mission control (CAPCOM): what Houston tells the crew at each moment.
+ * Mission control (CAPCOM): what the ground tells the crew at each moment. As in the real
+ * launch, Kennedy's launch control speaks during the count until the rocket clears the tower,
+ * and Houston from there on.
  * Derived from the simulation state, not stored: the "go" for each maneuver, the
  * event confirmations, the loss-of-signal notices and the alarms. While
  * the Moon blocks the link nothing arrives (messages in that interval are lost, as
@@ -14,15 +18,25 @@ import { INITIAL_MET, ManeuverId, SimState, ephemerisOf } from './state';
  */
 export type CapcomKind = 'go' | 'info' | 'caution';
 
+/** Who speaks: Kennedy's launch control (KSC) or mission control in Houston. */
+export type CapcomFrom = 'KSC' | 'HOUSTON';
+
 export interface CapcomMessage {
   readonly t: number;
   readonly kind: CapcomKind;
   readonly text: string;
+  readonly from: CapcomFrom;
 }
 
 const EN = {
-  engineStart: 'Launch team: go for main engine start. Six seconds to booster ignition.',
-  liftoff: 'Liftoff of Artemis II. Orion, Houston: good roll program, the vehicle is clear of the tower.',
+  countStart: 'The ground launch sequencer has started the terminal count. T‑10 minutes and counting.',
+  armRetracted: 'The crew access arm is retracted.',
+  tankPress: 'Core stage tanks pressurizing. Orion is on internal power.',
+  als: 'GLS is go for automated launch sequencer start.',
+  engineGo: 'T‑10 seconds. Go for main engine start.',
+  engineStart: 'We have RS‑25 start.',
+  liftoffKsc: 'Booster ignition, and liftoff of Artemis II.',
+  liftoff: 'Orion, Houston: the vehicle is clear of the tower and Houston has control. Good pitch program.',
   maxQ: 'Orion, Houston: through max Q. Vehicle is flying as expected.',
   srbSep: 'Booster separation confirmed. Four good RS‑25s.',
   las: 'Launch abort system jettison confirmed. You are now committed to the core stage.',
@@ -51,8 +65,14 @@ const EN = {
 type Key = keyof typeof EN;
 
 const ES: Readonly<Record<Key, string>> = {
-  engineStart: 'Equipo de lanzamiento: go para arranque de motores. Seis segundos para la ignición de los boosters.',
-  liftoff: 'Despegue de Artemis II. Orion, Houston: buen programa de rolido, el vehículo despejó la torre.',
+  countStart: 'El secuenciador de tierra inició la cuenta final. T menos 10 minutos y contando.',
+  armRetracted: 'El brazo de acceso de la tripulación está retraído.',
+  tankPress: 'Presurizando los tanques de la etapa central. Orion pasó a energía interna.',
+  als: 'Go del GLS para iniciar el secuenciador automático de lanzamiento.',
+  engineGo: 'T menos 10 segundos. Go para el arranque de los motores.',
+  engineStart: 'Arranque de los RS‑25.',
+  liftoffKsc: 'Ignición de los boosters y despegue de Artemis II.',
+  liftoff: 'Orion, Houston: el vehículo despejó la torre y Houston tiene el control. Buen programa de cabeceo.',
   maxQ: 'Orion, Houston: pasaron Max Q. El vehículo vuela como esperábamos.',
   srbSep: 'Separación de boosters confirmada. Cuatro RS‑25 en buen estado.',
   las: 'Eyección de la torre de escape confirmada. Ya están comprometidos con la etapa central.',
@@ -103,16 +123,25 @@ function losIntervals(s: SimState): [number, number][] {
 export function capcomFeed(s: SimState): CapcomMessage[] {
   const now = s.t;
   const out: CapcomMessage[] = [];
-  const add = (t: number, kind: CapcomKind, text: string): void => {
-    if (t <= now) out.push({ t, kind, text });
+  const add = (t: number, kind: CapcomKind, text: string, from: CapcomFrom = 'HOUSTON'): void => {
+    if (t <= now) out.push({ t, kind, text, from });
   };
   const marker = (id: string): number | null => s.markers.find((m) => m.eventId === id)?.t ?? null;
   const logAt = (prefix: string): number | null => s.log.find((l) => l.text.startsWith(prefix))?.t ?? null;
 
-  // Countdown and ascent.
-  add(INITIAL_MET, 'go', say('engineStart'));
+  // Terminal count ([CNT] milestones), from Kennedy's launch control.
+  add(COUNT_START, 'info', say('countStart'), 'KSC');
+  add(MET_ACCESS_ARM_RETRACT + ACCESS_ARM_RETRACT_DURATION, 'info', say('armRetracted'), 'KSC');
+  add(MET_TANK_PRESS + 5, 'info', say('tankPress'), 'KSC');
+  add(MET_ALS, 'go', say('als'), 'KSC');
+  add(-10, 'go', say('engineGo'), 'KSC');
+  add(-RS25_START_BEFORE_LIFTOFF, 'info', say('engineStart'), 'KSC');
+  // Ascent: Houston takes over when the rocket clears the tower.
   const e1 = marker('E1');
-  if (e1 !== null) add(e1 + 7, 'info', say('liftoff'));
+  if (e1 !== null) {
+    add(e1, 'info', say('liftoffKsc'), 'KSC');
+    add(e1 + 7, 'info', say('liftoff'));
+  }
   const maxQ = s.record.maxQ;
   if (maxQ?.logged) add(maxQ.t + 4, 'info', say('maxQ'));
   if (s.vehicle.srbSeparated) add(128 + 3, 'info', say('srbSep'));

@@ -141,6 +141,7 @@ export function getViewSettings(dim: ViewDim): ViewSettings {
  * Cockpit display settings (not part of the simulation, like the camera):
  * - `attRef`: reference frame of the attitude ball (the PFD's Att Ref key).
  * - `faultCursor`, `faultSort`: selected row and order of the Fault page.
+ * - `countFocus`: row of Flt.Count chosen with Scroll, or null to follow the count.
  * - `lampTest`: the lamp test switch is held (all LEDs and annunciators lit).
  * - `brightness`: brightness of each Display Unit (Brt/Dim keys), by index.
  */
@@ -148,10 +149,11 @@ export interface PanelUi {
   readonly attRef: 'LVLH' | 'INRTL';
   readonly faultCursor: number;
   readonly faultSort: 'time' | 'class';
+  readonly countFocus: number | null;
   readonly lampTest: boolean;
   readonly brightness: readonly number[];
 }
-const panelUi = createValue<PanelUi>({ attRef: 'LVLH', faultCursor: 0, faultSort: 'time', lampTest: false, brightness: [1, 1, 1] });
+const panelUi = createValue<PanelUi>({ attRef: 'LVLH', faultCursor: 0, faultSort: 'time', countFocus: null, lampTest: false, brightness: [1, 1, 1] });
 export const usePanelUi = panelUi.use;
 export const getPanelUi = panelUi.get;
 export const setPanelUi = (patch: Partial<PanelUi>): void => panelUi.set({ ...panelUi.get(), ...patch });
