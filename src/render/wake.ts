@@ -5,6 +5,7 @@ import { EARTH_ROTATION_IN_PLANE, MET_MECO, R_EARTH } from '../sim/constants';
 import { Vec3, add, distance, length, rotateZ, scale, sub } from '../sim/math/vec3';
 import { TrailPoint } from '../sim/state';
 import { RS25_START_BEFORE_LIFTOFF, rs25Throttle, srbThrustEach } from '../sim/vehicle';
+import { SPLIT_FRAGMENT, SPLIT_PARS_FRAGMENT, SPLIT_PARS_VERTEX, SPLIT_VERTEX, SplitMode, setSplit, splitUniforms } from './depthSplit';
 import { KM_TO_SCENE, ViewFrame, worldToScene } from './worldToScene';
 
 /*
@@ -14,7 +15,10 @@ import { KM_TO_SCENE, ViewFrame, worldToScene } from './worldToScene';
  * from then on, it moves with the air, which in the model turns with Earth (`airVelocity` in
  * sim/atmosphere.ts). That is what keeps the smoke column standing on the pad while the pad,
  * in the inertial frame, moves 0.4 km every second. How much smoke there is and how it looks
- * are drawing choices, without a source, listed below.
+ * are drawing choices, without a source, listed below. Its colors are those of the launch photos
+ * (stage 5 of the launch plan): tan where it is the boosters' smoke, as the column of this launch
+ * shows it in the low Sun, and the white of the steam where only the RS‑25s' vapor is left, the
+ * same two colors as the launch cloud on the pad (padCloud.ts), where the column is born.
  */
 
 /** Altitude (km) where the wake is gone: the Kármán line, the conventional edge of space (FAI). */
@@ -33,7 +37,7 @@ const WAKE_MAX_AGE = 3600;
  * the RS‑25s burn hydrogen and oxygen and leave water vapor, almost transparent. Opacity of the
  * vapor relative to the boosters' smoke at full thrust. Drawing choice.
  */
-const WAKE_VAPOR = 0.3;
+export const WAKE_VAPOR = 0.3;
 /** Opacity of the densest smoke. Drawing choice. */
 const WAKE_OPACITY = 0.85;
 /** Behind the nozzles the wake fades in over this distance (m): about the boosters' flame (render/vehicle.ts). */
@@ -80,6 +84,8 @@ export interface WakeSample {
   readonly width: number;
   /** Opacity (0–1). */
   readonly alpha: number;
+  /** How much of it is the boosters' smoke (1, tan) rather than the RS‑25s' vapor (0, white). */
+  readonly tan: number;
 }
 
 interface Raw {
@@ -87,7 +93,11 @@ interface Raw {
   age: number;
   alt: number;
   smoke: number;
+  tan: number;
 }
+
+/** The boosters' share of the smoke left at MET t: all of it while they burn above the vapor's level. */
+const tanAt = (t: number, smoke: number): number => (smoke > 0 ? Math.min(1, srbThrustEach(t) / SRB_FULL_THRUST / smoke) : 0);
 
 /**
  * Center line of the wake at the time of `tip` (the vehicle now), from the oldest smoke to the
@@ -105,7 +115,7 @@ export function wakeSamples(trail: readonly TrailPoint[], tip: { t: number; r: V
     if (smoke <= 0) return;
     // Relative to Earth's center when it was left, and turned since then with the air.
     const rel = sub(r, eph.earth(te).r);
-    const sample: Raw = { r: add(earthNow, rotateZ(rel, EARTH_ROTATION_IN_PLANE * age)), age, alt: length(rel) - R_EARTH, smoke };
+    const sample: Raw = { r: add(earthNow, rotateZ(rel, EARTH_ROTATION_IN_PLANE * age)), age, alt: length(rel) - R_EARTH, smoke, tan: tanAt(te, smoke) };
     const prev = raw[raw.length - 1];
     if (prev && distance(prev.r, sample.r) < MIN_STEP_KM) raw[raw.length - 1] = sample;
     else raw.push(sample);
@@ -128,7 +138,13 @@ export function wakeSamples(trail: readonly TrailPoint[], tip: { t: number; r: V
     for (const f of [1, 0.75, 0.5, 0.25]) {
       const k = (WAKE_RAMP_M * f) / span;
       if (k >= 1) continue;
-      raw.push({ r: add(b.r, scale(sub(a.r, b.r), k)), age: a.age * k, alt: b.alt + (a.alt - b.alt) * k, smoke: b.smoke + (a.smoke - b.smoke) * k });
+      raw.push({
+        r: add(b.r, scale(sub(a.r, b.r), k)),
+        age: a.age * k,
+        alt: b.alt + (a.alt - b.alt) * k,
+        smoke: b.smoke + (a.smoke - b.smoke) * k,
+        tan: b.tan + (a.tan - b.tan) * k,
+      });
     }
     raw.push(b);
   }
@@ -143,7 +159,7 @@ export function wakeSamples(trail: readonly TrailPoint[], tip: { t: number; r: V
     // also fades by itself with time.
     const spread = Math.sqrt(WAKE_WIDTH_M / width) * Math.exp(-p.age / WAKE_LIFE);
     const ramp = atNozzles ? smoothstep(behind[i] / WAKE_RAMP_M) : 1;
-    return { r: p.r, age: p.age, width, alpha: WAKE_OPACITY * p.smoke * airFade(p.alt) * spread * ramp };
+    return { r: p.r, age: p.age, width, alpha: WAKE_OPACITY * p.smoke * airFade(p.alt) * spread * ramp, tan: p.tan };
   });
   // Without the invisible ends (above the atmosphere), keeping one vertex so it fades to zero.
   let first = out.findIndex((p) => p.alpha > 0);
@@ -158,13 +174,16 @@ export function wakeSamples(trail: readonly TrailPoint[], tip: { t: number; r: V
 const VERTEX = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_vertex>
+${SPLIT_PARS_VERTEX}
 uniform float uViewHeight;
 attribute vec3 aTangent;
 attribute float aSide;
 attribute float aWidth;
 attribute float aAlpha;
+attribute float aTan;
 varying float vSide;
 varying float vAlpha;
+varying float vTan;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   // A band that always faces the camera: across the wake and across the line of sight.
@@ -178,6 +197,8 @@ void main() {
   mv.xyz += across * (aSide * 0.5 * aWidth * grow);
   vSide = aSide;
   vAlpha = aAlpha / grow;
+  vTan = aTan;
+  ${SPLIT_VERTEX}
   gl_Position = projectionMatrix * mv;
   #include <logdepthbuf_vertex>
 }
@@ -186,14 +207,18 @@ void main() {
 const FRAGMENT = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_fragment>
+${SPLIT_PARS_FRAGMENT}
 uniform vec3 uColor;
+uniform vec3 uTan;
 varying float vSide;
 varying float vAlpha;
+varying float vTan;
 void main() {
   #include <logdepthbuf_fragment>
+  ${SPLIT_FRAGMENT}
   // Soft edges: denser in the middle of the column.
   float edge = 1.0 - vSide * vSide;
-  gl_FragColor = vec4(uColor, vAlpha * edge * edge);
+  gl_FragColor = vec4(mix(uColor, uTan, vTan), vAlpha * edge * edge);
   #include <colorspace_fragment>
 }
 `;
@@ -204,12 +229,16 @@ export interface Wake {
   update(trail: readonly TrailPoint[], tip: { t: number; r: Vec3 }, eph: Ephemeris, frame: ViewFrame): void;
   /** Height of the view (px), for the minimum width on screen. */
   setResolution(height: number): void;
+  /** Which fragments this pass draws (depthSplit.ts). */
+  setSplit(mode: SplitMode, depth: number): void;
   dispose(): void;
 }
 
-export function createWake(color: string): Wake {
+/** The wake with the colors of the steam (white) and of the boosters' smoke (tan). */
+export function createWake(colors: { readonly steam: string; readonly tan: string }): Wake {
+  const split = splitUniforms();
   const material = new THREE.ShaderMaterial({
-    uniforms: { uColor: { value: new THREE.Color(color) }, uViewHeight: { value: 1 } },
+    uniforms: { uColor: { value: new THREE.Color(colors.steam) }, uTan: { value: new THREE.Color(colors.tan) }, uViewHeight: { value: 1 }, ...split },
     vertexShader: VERTEX,
     fragmentShader: FRAGMENT,
     transparent: true,
@@ -226,6 +255,7 @@ export function createWake(color: string): Wake {
   let tangent = new Float32Array(0);
   let width = new Float32Array(0);
   let alpha = new Float32Array(0);
+  let tan = new Float32Array(0);
   const ensure = (n: number): void => {
     if (n <= capacity) return;
     capacity = Math.max(64, 2 ** Math.ceil(Math.log2(n)));
@@ -233,6 +263,7 @@ export function createWake(color: string): Wake {
     tangent = new Float32Array(capacity * 6);
     width = new Float32Array(capacity * 2);
     alpha = new Float32Array(capacity * 2);
+    tan = new Float32Array(capacity * 2);
     const side = new Float32Array(capacity * 2);
     for (let i = 0; i < capacity; i++) {
       side[2 * i] = -1;
@@ -248,6 +279,7 @@ export function createWake(color: string): Wake {
     geometry.setAttribute('aTangent', new THREE.BufferAttribute(tangent, 3).setUsage(THREE.DynamicDrawUsage));
     geometry.setAttribute('aWidth', new THREE.BufferAttribute(width, 1).setUsage(THREE.DynamicDrawUsage));
     geometry.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1).setUsage(THREE.DynamicDrawUsage));
+    geometry.setAttribute('aTan', new THREE.BufferAttribute(tan, 1).setUsage(THREE.DynamicDrawUsage));
     geometry.setAttribute('aSide', new THREE.BufferAttribute(side, 1));
     geometry.setIndex(new THREE.BufferAttribute(index, 1));
     mesh.geometry.dispose();
@@ -284,14 +316,18 @@ export function createWake(color: string): Wake {
           tangent.set([tx, ty, tz], 3 * v);
           width[v] = w;
           alpha[v] = samples[i].alpha;
+          tan[v] = samples[i].tan;
         }
       }
       const g = mesh.geometry;
-      for (const name of ['position', 'aTangent', 'aWidth', 'aAlpha']) g.getAttribute(name).needsUpdate = true;
+      for (const name of ['position', 'aTangent', 'aWidth', 'aAlpha', 'aTan']) g.getAttribute(name).needsUpdate = true;
       g.setDrawRange(0, (n - 1) * 6);
     },
     setResolution(height) {
       material.uniforms.uViewHeight.value = height;
+    },
+    setSplit(mode, depth) {
+      setSplit(split, mode, depth);
     },
     dispose() {
       mesh.geometry.dispose();

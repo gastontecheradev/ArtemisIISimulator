@@ -85,6 +85,11 @@ const SWATCHES: Swatch[] = [
   { name: 'pad-concrete', image: 'launch/ML-1-image-1.jpg', box: [0.36, 0.83, 0.42, 0.9], pick: 'median', note: 'pad concrete' },
   { name: 'pad-tank', image: 'launch/ML-1-image-1.jpg', box: [0.623, 0.425, 0.638, 0.455], pick: 'median', note: 'white tanks' },
   { name: 'pad-hood', image: 'launch/ML-1-image-1.jpg', box: [0.553, 0.775, 0.572, 0.81], pick: 'median', note: 'tail service mast hood' },
+  // Launch cloud (stage 5): the steam of the ground cloud east of the rocket in the liftoff photo
+  // (mostly in shade there: its sunlit tenth is the white), and the boosters' smoke, the tan column
+  // of the photo taken a few seconds later, in the low Sun of the launch hour.
+  { name: 'smoke-steam', image: 'launch/launch-1.jpg', box: [0.71, 0.85, 0.82, 0.94], pick: 'bright', top: 0.1, note: 'launch cloud steam, in the sun' },
+  { name: 'smoke-tan', image: 'launch/launch-2.jpg', box: [0.44, 0.73, 0.5, 0.82], pick: 'median', note: 'booster smoke, in the sun' },
 ];
 
 const score: Record<Exclude<Criterion, 'median'>, (p: Rgb) => number> = {
