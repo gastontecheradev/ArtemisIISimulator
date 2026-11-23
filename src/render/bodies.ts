@@ -139,6 +139,18 @@ function circle(radius: number, segments: number, closed: boolean): THREE.Buffer
   return new THREE.BufferGeometry().setFromPoints(pts);
 }
 
+/**
+ * What the pad's ground adds to Earth's texel (padLayout.ts): GLSL that runs with the ground's
+ * east-north position in meters (`vGroundEN`, declared here) and Earth's texel (`geoTexel`), which it
+ * may change; `roughness` runs after the roughness is set.
+ */
+export interface SurfaceLayout {
+  readonly uniforms: Record<string, THREE.IUniform>;
+  readonly head: string;
+  readonly apply: string;
+  readonly roughness: string;
+}
+
 /** NASA textures (registered in ASSETS.md), equirectangular, made by `npm run images`. */
 export interface BodyTextures {
   readonly size: '2k' | '4k';
@@ -188,24 +200,26 @@ export function earthGeoMatrix(): THREE.Matrix3 {
  * `dir` says where each vertex's direction in Earth-mesh local axes comes from: the position (Earth)
  * or the `geoDir` attribute (the pad's ground). With `hole`, the fragments inside the pad's ground
  * circle are discarded (the test uses the horizontal components, which keep their precision there).
+ * With `layout` (the pad's ground only), the ground's own layout goes over Earth's texel (padLayout.ts).
  */
 function sampleGeographic(
   material: THREE.Material,
   geo: THREE.Matrix3,
   detail: DetailUniforms,
-  opts: { dir: 'position' | 'geoDir'; hole: boolean; haze?: Haze } = { dir: 'position', hole: false },
+  opts: { dir: 'position' | 'geoDir'; hole: boolean; haze?: Haze; layout?: SurfaceLayout } = { dir: 'position', hole: false },
 ): void {
   // Each variant needs its own program: by default Three keys it on this function's source text.
-  material.customProgramCacheKey = () => `geographic|${opts.dir}|${opts.hole}|${opts.haze ? 'haze' : ''}`;
+  material.customProgramCacheKey = () => `geographic|${opts.dir}|${opts.hole}|${opts.haze ? 'haze' : ''}|${opts.layout ? 'layout' : ''}`;
   const haze = opts.haze;
+  const layout = opts.layout;
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, { uGeo: { value: geo }, ...detail }, haze?.uniforms ?? {});
+    Object.assign(shader.uniforms, { uGeo: { value: geo }, ...detail }, haze?.uniforms ?? {}, layout?.uniforms ?? {});
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        `#include <common>\nvarying vec3 vGeoDir;${opts.dir === 'geoDir' ? '\nattribute vec3 geoDir;' : ''}${haze ? '\nvarying vec3 vHazeWorld;' : ''}`,
+        `#include <common>\nvarying vec3 vGeoDir;${opts.dir === 'geoDir' ? '\nattribute vec3 geoDir;' : ''}${haze ? '\nvarying vec3 vHazeWorld;' : ''}${layout ? '\nvarying vec2 vGroundEN;' : ''}`,
       )
-      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvGeoDir = ${opts.dir};`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvGeoDir = ${opts.dir};${layout ? '\nvGroundEN = position.xy;' : ''}`)
       .replace('#include <project_vertex>', `#include <project_vertex>${haze ? '\nvHazeWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;' : ''}`);
     shader.fragmentShader = shader.fragmentShader
       // Drawn after the atmosphere, the surface hazes itself (atmosphere.ts).
@@ -221,6 +235,7 @@ function sampleGeographic(
         '#include <common>',
         `#include <common>
         ${haze ? `varying vec3 vHazeWorld;\n${haze.head}` : ''}
+        ${layout ? `varying vec2 vGroundEN;\n${layout.head}` : ''}
         varying vec3 vGeoDir;
         uniform mat3 uGeo;
         uniform sampler2D uDetail;
@@ -251,9 +266,11 @@ function sampleGeographic(
             vec4 fine = textureGrad(uDetail, duv, vec2(dux, dFdx(v)) * scale, vec2(duy, dFdy(v)) * scale);
             geoTexel = mix(geoTexel, fine, w);
           }
+          ${layout ? layout.apply : ''}
           diffuseColor *= geoTexel;
         #endif`,
       )
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${layout ? `\n${layout.roughness}` : ''}`)
       .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance *= geoTexel.rgb;');
   };
 }
@@ -264,14 +281,14 @@ function sampleGeographic(
  * until those load, and on the 2D map and the inset, they are plain-colored spheres.
  * With `pad` (only the 3D view) Earth uses the pad-centered mesh, leaves a hole where the pad's own
  * ground goes, and offers the material for that ground, which adds the atmosphere's `haze` itself
- * (it is drawn after the atmosphere).
+ * (it is drawn after the atmosphere) and wears the ground's `layout` over Earth's texture.
  */
 export function createBodies(
   colors: { earth: string; moon: string; orbit: string; ei: string },
   /** 2D map: lightened Moon (mixed with white, no new hues) and a more visible orbit. */
   contrast = false,
   textures: BodyTextures | null = null,
-  pad: { haze: Haze } | null = null,
+  pad: { haze: Haze; layout?: SurfaceLayout } | null = null,
 ): BodyMeshes {
   const padCentered = pad !== null;
   const group = new THREE.Group();
@@ -332,7 +349,7 @@ export function createBodies(
     sampleGeographic(earthMat.flat, geo, detail, opts);
     sampleGeographic(earthMat.lit, geo, detail, opts);
     if (padCentered) sampleGeographic(earthDepthMaterial, geo, detail, opts);
-    if (groundMat && pad) sampleGeographic(groundMat, geo, detail, { dir: 'geoDir', hole: false, haze: pad.haze });
+    if (groundMat && pad) sampleGeographic(groundMat, geo, detail, { dir: 'geoDir', hole: false, haze: pad.haze, layout: pad.layout });
   }
   const size = textures?.size ?? '2k';
   if (textures?.detail) {

@@ -17,6 +17,7 @@ import { createOverlay } from './markers';
 import { createPadModel } from './pad';
 import { createPadCloud, riseFromTrail } from './padCloud';
 import { createPadGround, liftAboveGround, padAxes, padCameraEye } from './padGround';
+import { createGroundLayout } from './padLayout';
 import { createStars } from './stars';
 import { createTrails } from './trails';
 import { PAD_ANCHOR_STATION, createDebrisModels, createVehicleModel, debrisLength, vehicleExtent, vehicleIconSvg } from './vehicle';
@@ -283,12 +284,26 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   // Earth's atmosphere (atmosphere.ts), with the sky color of the attitude ball: only in 3D,
   // the map and the inset keep their flat infographic style.
   const atmosphere = is3d ? createAtmosphere(cssVar(container, '--c-adi-sky')) : null;
+  // What the pad's ground is made of (padLayout.ts), with the colors of the photo of the pad: only in 3D.
+  const groundLayout = is3d
+    ? createGroundLayout(
+        {
+          grass: cssVar(container, '--c-ground-grass'),
+          scrub: cssVar(container, '--c-ground-scrub'),
+          sand: cssVar(container, '--c-ground-sand'),
+          water: cssVar(container, '--c-ground-water'),
+          road: cssVar(container, '--c-ground-road'),
+          concrete: cssVar(container, '--c-pad-concrete'),
+        },
+        anisotropy,
+      )
+    : null;
   const bodies = createBodies({
     earth: cssVar(container, '--c-body-earth'),
     moon: cssVar(container, '--c-body-moon'),
     orbit: cssVar(container, '--c-label'),
     ei: cssVar(container, '--c-caution'),
-  }, isMap, is3d ? { size: '4k', anisotropy: renderer.capabilities.getMaxAnisotropy(), detail: true } : null, atmosphere ? { haze: atmosphere.haze } : null);
+  }, isMap, is3d ? { size: '4k', anisotropy: renderer.capabilities.getMaxAnisotropy(), detail: true } : null, atmosphere ? { haze: atmosphere.haze, layout: groundLayout?.surface } : null);
   bodies.setLit(is3d);
   // The pad's own ground (padGround.ts), only in 3D: Earth leaves a hole for it.
   const ground = is3d && bodies.groundMaterial ? createPadGround(bodies.groundMaterial) : null;
@@ -854,6 +869,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
       model?.dispose();
       debrisModels?.dispose();
       ground?.dispose();
+      groundLayout?.dispose();
       padModel?.dispose();
       renderer.dispose();
       renderer.domElement.remove();

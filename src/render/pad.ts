@@ -55,6 +55,8 @@ const local = (p: { readonly east: number; readonly north: number }): readonly [
   (p.east - ROCKET_ON_ML.east) * M,
   (p.north - ROCKET_ON_ML.north) * M,
 ];
+/** The same conversion, for the ground's layout (padLayout.ts), so its aprons sit under the pad's objects. */
+export const padLocal = local;
 
 /** Height above the deck (m) of vehicle station `x` while the rocket stands on its support posts. */
 export const deckHeight = (x: number): number => x - PAD_ANCHOR_STATION + POST;
@@ -955,7 +957,7 @@ export interface PadColors {
 }
 
 /** Mixes a palette color with black (fraction `f`), as the palette's derived tones do. */
-const darker = (c: string, f: number): string => `#${new THREE.Color(c).lerp(new THREE.Color(0x000000), f).getHexString()}`;
+export const darker = (c: string, f: number): string => `#${new THREE.Color(c).lerp(new THREE.Color(0x000000), f).getHexString()}`;
 
 /** Deterministic pseudo-random sequence (mulberry32), so the textures look the same every time. */
 function random(seed: number): () => number {

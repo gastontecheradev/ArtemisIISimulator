@@ -216,6 +216,27 @@ export const PAD_TOP_NORTH =
   PAD_TOP_RADIUS -
   (PAD_SLOPE_RUN * Math.acos((2 * (PAD_ELEVATION - FLAME_TRENCH.depth)) / PAD_ELEVATION - 1)) / Math.PI; // ≈ 0.080 km
 
+/**
+ * [CRW] NASA, "Countdown! NASA Launch Vehicles and Facilities", Information Summaries
+ * IS‑2003‑09‑006‑KSC (2003), primary: "The Crawlerway is a 130-foot-wide (39.6-meter) roadway ... The
+ * Crawlerway consists of two 40-foot- (12-meter-) wide lanes, separated by a 50-foot- (15-meter-) wide
+ * median strip"; its top layer is river gravel; "The ramp leading up to the pad surface is inclined at a
+ * 5 percent grade". It gives Pad B's 55 ft too, like [LC50]. The SLS uses the same crawlerway. Only the 3D
+ * ground draws it (render/padLayout.ts); the ramp is not in the relief.
+ */
+export const CRAWLERWAY = { lane: 40 * FT_TO_KM, median: 50 * FT_TO_KM, total: 130 * FT_TO_KM, rampGrade: 0.05 } as const;
+
+/**
+ * The Atlantic shoreline east of LC‑39B, measured on NASA's Earth texture (`earth-day-pad`, the Blue
+ * Marble patch of ASSETS.md: 1.63 km per pixel east-west, 1.85 km north-south): in each row of pixels from
+ * 9 km north to 7.6 km south of the pad, where a water index (blue minus red, scaled between the land west
+ * of the pad and the open sea) crosses one half; then a least-squares parabola through those ten points
+ * (0.17 km rms). East (km) = a + b·north + c·north², north in km from the launch site. The WebP and JPG
+ * files differ by up to 1.2 km at the pad's row: good to about ±1 km. It puts the beach ~1.9 km
+ * east-northeast of the pad. Only the 3D ground draws it (render/padLayout.ts).
+ */
+export const COASTLINE = { a: 2.1758, b: -0.5713, c: -0.0072 } as const;
+
 const hms = (h: number, m: number, s: number): number => h * 3600 + m * 60 + s;
 const dhms = (d: number, h: number, m: number, s: number): number => d * 86400 + hms(h, m, s);
 
