@@ -523,7 +523,7 @@ export const ROFI_SPARK_COUNT = IGNITERS.length * ROFI.perIgniter;
 export const ROFI_SPARKS_END = ROFI.life[1];
 
 /** Deterministic hash of three integers to [0, 1). */
-function hash3(a: number, b: number, c: number): number {
+export function hash3(a: number, b: number, c: number): number {
   let h = Math.imul(a + 1, 0x27d4eb2d) ^ Math.imul(b + 1, 0x165667b1) ^ Math.imul(c + 1, 0x9e3779b1);
   h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);

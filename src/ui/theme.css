@@ -42,6 +42,8 @@
   --c-pad-concrete: #d1c3af; /* pad concrete */
   --c-pad-tank: #efede8; /* white tanks */
   --c-pad-hood: #b3b2b3; /* tail service mast hood */
+  --c-smoke-steam: #dcd9d9; /* launch cloud steam, in the sun */
+  --c-smoke-tan: #ceb191; /* booster smoke, in the sun */
 }
 /* palette:end */
 

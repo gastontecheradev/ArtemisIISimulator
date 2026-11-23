@@ -15,6 +15,7 @@ import { createBodies } from './bodies';
 import { CameraRig, createOrthoRig, createPerspectiveRig } from './camera';
 import { createOverlay } from './markers';
 import { createPadModel } from './pad';
+import { createPadCloud, riseFromTrail } from './padCloud';
 import { createPadGround, liftAboveGround, padAxes, padCameraEye } from './padGround';
 import { createStars } from './stars';
 import { createTrails } from './trails';
@@ -122,6 +123,12 @@ const SHIP_FILL = 0.45;
  * The launch pad (pad.ts) is only drawn in that pass, while the camera is this close to it.
  */
 const SHIP_DEPTH_KM = 50;
+
+/**
+ * The launch cloud (padCloud.ts) is at most a few km across: farther than this (km) from the camera
+ * it is a few pixels and is not computed.
+ */
+const CLOUD_DRAW_KM = 300;
 
 /**
  * Zoom of the spacecraft camera (drawing choice): each wheel step multiplies the distance by
@@ -314,9 +321,25 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
   const debrisGroup = new THREE.Group();
   scene.add(bodies.group, trails.group);
   if (ground) scene.add(ground.mesh);
-  // The ascent's exhaust wake in the air (wake.ts), at real scale: only in 3D.
-  const wake = is3d ? createWake(cssVar(container, '--c-label')) : null;
-  if (wake) scene.add(wake.mesh);
+  // The ascent's exhaust wake in the air (wake.ts), at real scale, and the vapor, water and launch
+  // cloud on the pad (padCloud.ts): only in 3D, with the colors of the launch photos.
+  const smoke = { steam: cssVar(container, '--c-smoke-steam'), tan: cssVar(container, '--c-smoke-tan') };
+  const wake = is3d ? createWake(smoke) : null;
+  const cloud = is3d ? createPadCloud(smoke) : null;
+  // Soft transparent things, drawn in two halves by distance (depthSplit.ts): what lies beyond the
+  // precise pass's reach after the scene, the rest in that pass after the pad and the spacecraft, so
+  // the tower no longer paints over the smoke in front of it. Among them, the cloud before the wake
+  // (it is lower, mostly behind the column's base), and both before the additive flames and sparks.
+  const fxScene = new THREE.Scene();
+  const fx: THREE.Mesh[] = [];
+  if (cloud) {
+    cloud.mesh.renderOrder = -0.2;
+    fx.push(cloud.mesh);
+  }
+  if (wake) {
+    wake.mesh.renderOrder = -0.1;
+    fx.push(wake.mesh);
+  }
   if (atmosphere) scene.add(atmosphere.mesh);
   // The spacecraft and its parts are drawn in a pass of their own, after the scene and with
   // its depth: the same Sun plus a dim fill from the camera, so the side in shadow still shows
@@ -576,6 +599,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     padOrigin.copy(bodies.earth.position).addScaledVector(vx.set(axes.up.x, axes.up.y, axes.up.z), R_EARTH * KM_TO_SCENE);
     ground?.place(padOrigin, axes, M_TO_SCENE);
     padModel?.place(padOrigin, axes, M_TO_SCENE);
+    cloud?.place(padOrigin, axes, M_TO_SCENE);
     // Arms, tail masts and igniter sparks: a function of the mission time only (pad.ts).
     padModel?.animate(s.t);
     // Synchronous rotation: the Moon's near side (longitude 0 of its map, local +x)
@@ -758,15 +782,26 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     // flame trench open for it (in the main pass too, so the trench shows through the ground).
     const padNear = padModel !== null && cam instanceof THREE.PerspectiveCamera && padDistance < reach;
     ground?.setTrench(padNear);
+    const shipDistance = model ? cam.position.distanceTo(model.group.position) : Infinity;
+    const shipNear = cam instanceof THREE.PerspectiveCamera && shipDistance < reach;
+    // The precise pass (spacecraft and pad near the camera) reaches this view depth.
+    const precise = shipNear || padNear;
+    const preciseFar = Math.max(shipNear ? shipDistance : 0, padNear ? padDistance : 0) + reach;
+    if (cloud) {
+      if (padDistance < CLOUD_DRAW_KM * KM_TO_SCENE) cloud.update(s.t, riseFromTrail(s.trail, tip, eph), cam.position, sun.position);
+      else cloud.mesh.visible = false;
+    }
+    for (const o of fx) fxScene.add(o);
+    cloud?.setSplit(precise ? 'far' : 'all', preciseFar);
+    wake?.setSplit(precise ? 'far' : 'all', preciseFar);
     renderer.clear();
     stars.render(renderer, cam, width / height, frameAngle);
     renderer.clearDepth();
     renderer.render(scene, cam);
+    renderer.render(fxScene, cam);
     if (model) {
       // The fill comes from the camera's side (the scene origin is the point it looks at).
       shipFill.position.copy(cam.position);
-      const shipDistance = cam.position.distanceTo(model.group.position);
-      const shipNear = cam instanceof THREE.PerspectiveCamera && shipDistance < reach;
       if (padModel) padModel.group.visible = false;
       if (!shipNear) {
         // Far from the camera: the spacecraft and its parts with the scene's camera and depth.
@@ -776,9 +811,9 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
         debrisGroup.visible = true;
         renderer.render(shipScene, cam);
       }
-      if ((shipNear || padNear) && cam instanceof THREE.PerspectiveCamera) {
+      if (precise && cam instanceof THREE.PerspectiveCamera) {
         shipCamera.copy(cam);
-        shipCamera.far = Math.max(shipNear ? shipDistance : 0, padNear ? padDistance : 0) + reach;
+        shipCamera.far = preciseFar;
         shipCamera.updateProjectionMatrix();
         // Earth's and the ground's world matrices as the main pass just computed them.
         earthDepth.matrix.copy(bodies.earth.matrixWorld);
@@ -792,6 +827,10 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
         model.group.visible = shipNear;
         debrisGroup.visible = shipNear;
         if (padModel) padModel.group.visible = padNear;
+        // The near half of the cloud and the wake, after the opaque pad and spacecraft.
+        for (const o of fx) shipScene.add(o);
+        cloud?.setSplit('near', preciseFar);
+        wake?.setSplit('near', preciseFar);
         renderer.clearDepth();
         renderer.render(shipScene, shipCamera);
       }
@@ -809,6 +848,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
       bodies.dispose();
       trails.dispose();
       wake?.dispose();
+      cloud?.dispose();
       atmosphere?.dispose();
       stars.dispose();
       model?.dispose();
