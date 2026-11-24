@@ -5,7 +5,7 @@ import { Credits } from './Credits';
 import { EndScreen } from './EndScreen';
 import { LanguageScreen } from './LanguageScreen';
 import { StartScreen } from './StartScreen';
-import { CAMERA_MODES, TrajectoryView } from './TrajectoryView';
+import { TrajectoryView } from './TrajectoryView';
 import { GuideViewer, GuidesMenu } from './guides/Guides';
 import { Capcom } from './panel/Capcom';
 import { DisplayUnit } from './panel/DisplayUnit';
@@ -16,7 +16,7 @@ import { SwitchPanel } from './panel/SwitchPanel';
 import { TimeControls } from './panel/TimeControls';
 import { RotAxis } from '../sim/state';
 import { useT } from './i18n';
-import { act, setCamera, setGuide, setTour, useGuide, useIntro, usePanelUi, useSim, useTour } from './store';
+import { CAMERA_MODES, act, setCamera, setGuide, setTour, useGuide, useIntro, usePanelUi, useSim, useTour } from './store';
 import { Tour } from './tutorial/Tour';
 
 /** Initial pages of the left Display Unit (a constant: DisplayUnit compares it between renders). */

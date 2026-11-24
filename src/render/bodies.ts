@@ -22,6 +22,31 @@ const EARTH_NIGHT_GLOW = 0.35;
 /** Lightening of the lit Earth's color in 3D (mix with white). Low so it stays blue. */
 const EARTH_DAY_LIFT = 0.12;
 
+/**
+ * The glow on the pad's ground, on the day side, follows the relief like sunlight (drawing choice).
+ * With the Sun low (14° at liftoff), the glow is more than half of what lights flat ground, so a
+ * uniform glow flattened the slopes of the elevated pad. Now it is scaled by how much more or less
+ * sunlight a slope gets than flat ground (`cos` to the Sun over the flat one's): flat ground keeps
+ * exactly the light it had, so the ground still blends with Earth at its edge and Earth does not
+ * change. A slope turned away from the Sun keeps RELIEF_SKY of the glow (the sky that lights it), and
+ * one facing it gets at most RELIEF_MAX times the glow. Near the terminator (the Sun below
+ * RELIEF_DAY, the sine of its elevation) it fades back to the uniform glow, which is there for the
+ * night side.
+ */
+const RELIEF_SKY = 0.3;
+const RELIEF_MAX = 2;
+const RELIEF_DAY = 0.1;
+/** GLSL after the emissive radiance is set: needs the haze's `vHazeWorld`, `uEarth` and `uSun` (atmosphere.ts). */
+const RELIEF_GLOW = /* glsl */ `
+  {
+    vec3 rfUp = normalize(vHazeWorld - uEarth);
+    vec3 rfN = inverseTransformDirection(normal, viewMatrix);
+    float rfFlat = dot(rfUp, uSun);
+    float rfQ = clamp(dot(rfN, uSun) / max(rfFlat, 1e-3), 0.0, ${RELIEF_MAX.toFixed(1)});
+    float rfDay = smoothstep(0.0, ${RELIEF_DAY.toFixed(2)}, rfFlat);
+    totalEmissiveRadiance *= mix(1.0, ${RELIEF_SKY.toFixed(2)} + ${(1 - RELIEF_SKY).toFixed(2)} * rfQ, rfDay);
+  }`;
+
 export interface BodyMeshes {
   readonly group: THREE.Group;
   readonly earth: THREE.Mesh;
@@ -86,18 +111,41 @@ export const PAD_SPHERE_SECTORS = 256;
  * old sphere (facets of 1.875°) dropped 16 m per km, and below the old sphere's everywhere else.
  */
 export function padSphereRings(): number[] {
-  const first = 0.01 / R_EARTH;
-  const max = (0.5 * Math.PI) / 180;
   const thetas = [0];
   let theta = 0;
-  for (let step = first; step < max; step *= 1.08) {
+  for (let step = RING_FIRST; step < RING_MAX; step *= RING_GROWTH) {
     theta += step;
     thetas.push(theta);
   }
-  const n = Math.ceil((Math.PI - theta) / max);
+  const n = Math.ceil((Math.PI - theta) / RING_MAX);
   for (let k = 1; k <= n; k++) thetas.push(k === n ? Math.PI : theta + ((Math.PI - theta) * k) / n);
   return thetas;
 }
+/** First ring (rad), growth of the spacing per ring and largest spacing (rad) of `padSphereRings`. */
+const RING_FIRST = 0.01 / R_EARTH;
+const RING_GROWTH = 1.08;
+const RING_MAX = (0.5 * Math.PI) / 180;
+/** Safety factor of `padMeshSag` over the flat-facet estimate (checked against the mesh in a test). */
+const SAG_MARGIN = 1.25;
+
+/**
+ * Upper bound of how far the pad-centered Earth mesh sinks below the sphere (km) at the polar angle
+ * `theta` from the pad: a flat facet with sides `a` (between rings) and `b` (between sectors) dips
+ * ~(a² + b²)/8 of the radius. 0.7 mm 2 km from the pad, 0.2 m at 36 km and ~0.5 km 90° away.
+ * The atmosphere uses it to decide which lines of sight end on the ground (atmosphere.ts).
+ */
+export function padMeshSag(theta: number): number {
+  const a = Math.min((RING_GROWTH - 1) * theta + RING_FIRST, RING_MAX);
+  const b = Math.min(1, Math.sin(theta) + a) * ((2 * Math.PI) / PAD_SPHERE_SECTORS);
+  return ((SAG_MARGIN * R_EARTH) / 8) * (a * a + b * b);
+}
+/** The same bound in GLSL (`float padMeshSag(float theta)`). */
+export const PAD_MESH_SAG_GLSL = /* glsl */ `
+float padMeshSag(float theta) {
+  float a = min(${(RING_GROWTH - 1).toFixed(4)} * theta + ${RING_FIRST.toExponential(8)}, ${RING_MAX.toExponential(8)});
+  float b = min(1.0, sin(theta) + a) * ${((2 * Math.PI) / PAD_SPHERE_SECTORS).toExponential(8)};
+  return ${((SAG_MARGIN * R_EARTH) / 8).toFixed(4)} * (a * a + b * b);
+}`;
 
 /**
  * Earth mesh for the 3D view: a unit sphere with its pole on the pad (local +y, where the Earth
@@ -271,7 +319,8 @@ function sampleGeographic(
         #endif`,
       )
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${layout ? `\n${layout.roughness}` : ''}`)
-      .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance *= geoTexel.rgb;');
+      // On the pad's ground (the variant with haze), the day-side glow follows the relief.
+      .replace('#include <emissivemap_fragment>', `totalEmissiveRadiance *= geoTexel.rgb;${haze ? RELIEF_GLOW : ''}`);
   };
 }
 

@@ -1,25 +1,35 @@
 import {
   APOLLO_13_RECORD_DISTANCE,
+  CRAWLERWAY,
   CUBESAT_DEPLOYMENTS,
   E7_BURN_DURATION,
   EARTH_MOON_DISTANCE,
+  FLAME_TRENCH,
   FLYBY_ALTITUDE_TARGET,
   HEO_ORBIT,
   INSERTION_ORBIT,
+  LAUNCH_DECK_HEIGHT,
+  LIFTOFF_AFTER_WINDOW_OPEN,
+  LIGHTNING_MAST_HEIGHT,
   MET_E4_PERIGEE_RAISE,
   MET_E5_APOGEE_RAISE,
   MET_E6_PROX_OPS_START,
   MET_E7_DEPARTURE,
   MET_ICPS_DISPOSAL,
   MET_ICPS_SPLASHDOWN,
+  ML1,
   MOON_ORBIT,
+  PAD_ELEVATION,
   POST_ARB_ORBIT,
   POST_PRM_ORBIT,
   PUBLISHED_MET,
+  SUPPORT_POST_HEIGHT,
+  TSMU_HEIGHT,
 } from '../../sim/constants';
 import { dvMagnitude } from '../../sim/burns';
-import { formatDuration, formatMet, formatNumber } from '../../sim/format';
+import { formatDuration, formatMet, formatNumber, formatSpan, formatTMinus } from '../../sim/format';
 import { Locale } from '../../sim/i18n';
+import { COUNTDOWN, COUNT_START, CountdownId, MET_ALS } from '../../sim/mission/countdown';
 import { MISSION_PARAMS } from '../../sim/mission/params';
 import { CONFIG_AT_LIFTOFF, CUBESAT_COUNT, ENGINES, MASS, RS25_START_BEFORE_LIFTOFF, SRB_ISP, SRB_THRUST_PROFILE, dryMass, idealDv } from '../../sim/vehicle';
 import { GuideId } from '../store';
@@ -60,6 +70,17 @@ const SRC_A2 = 'NASA, "Artemis II Reference Guide" (2026)';
 const SRC_TL = 'NASA, "Artemis II Overview Timeline" (18/03/2026)';
 const SRC_OBJ = 'NASA, "Artemis II Priorities and Objectives" (2026)';
 const SRC_JPL = 'NASA/JPL, Horizons ephemeris system';
+// The launch pad and the terminal count ([CNT], [ML1], [UMB], [39B], [LC50] and [CRW] in constants.ts).
+const SRC_CNT = 'NASA, "NASA Releases Artemis II Moon Mission Launch Countdown" (2026‑03‑26)';
+const SRC_ML1 = 'NASA, "Mobile Launcher 1" fact sheet (FS‑2024‑11‑997‑KSC)';
+const SRC_UMB = 'NASA, "Mobile Launcher Tower Umbilicals and Accessories" fact sheet (FS‑2021‑08‑727‑KSC)';
+const SRC_39B = 'NASA, "Launch Complex 39B" fact sheet (FS‑2021‑08‑726‑KSC)';
+const SRC_LC50 = 'NASA, "NASA Celebrates 50th Anniversary of Launch Complex 39B" (2017)';
+const SRC_CRW = 'NASA, "Countdown! NASA Launch Vehicles and Facilities" (IS‑2003‑09‑006‑KSC)';
+const SRC_LDAY = 'NASA, "Live Artemis II Launch Day Updates" (2026‑04‑01)';
+
+/** Meters from km, with `d` decimals. */
+const m = (km: number, d = 0): string => formatNumber(km * 1000, d);
 
 // ---------- Objective ----------
 
@@ -119,13 +140,80 @@ function objective(l: Locale): GuideContent {
 
 // ---------- Stages ----------
 
+/**
+ * Main milestones of the terminal count ([CNT]): what NASA's count says and what the simulator does
+ * at each one. The rest are on the Flt.Count page.
+ */
+const COUNT_ROWS: Partial<Record<CountdownId, readonly [en: string, es: string, simEn: string, simEs: string]>> = {
+  GLS: [
+    'The ground launch sequencer (GLS) starts the terminal count.',
+    'El secuenciador de tierra (GLS) inicia la cuenta final.',
+    'The mission starts here, with the rocket on the Mobile Launcher’s support posts.',
+    'La misión empieza acá, con el cohete sobre los postes del Mobile Launcher.',
+  ],
+  CAA: ['The crew access arm retracts.', 'Se retrae el brazo de acceso de la tripulación.', 'The arm swings away from the hatch (3D view).', 'El brazo se aparta de la escotilla (vista 3D).'],
+  PRESS: [
+    'Core stage tanks pressurized; Orion on internal power, ascent pyros armed.',
+    'Presurización de los tanques de la etapa central; Orion a energía interna, pirotecnia de ascenso armada.',
+    'The boil-off vapor at the umbilicals stops (3D view).',
+    'Se corta el vapor de los venteos en los umbilicales (vista 3D).',
+  ],
+  ALS: [
+    'The GLS gives the go to the automated launch sequencer (ALS).',
+    'El GLS da el “go” al secuenciador automático (ALS).',
+    'The warp drops to ×1 (except with the automatic crew).',
+    'El warp baja a ×1 (salvo con la tripulación automática).',
+  ],
+  ROFI: [
+    'The hydrogen burn-off igniters (ROFI) light under the engines.',
+    'Se encienden los encendedores de quemado de hidrógeno (ROFI) bajo los motores.',
+    'Sparks fall under the engines (3D view).',
+    'Caen chispas bajo los motores (vista 3D).',
+  ],
+  RS25: [
+    'The four RS‑25 engines start.',
+    'Arrancan los cuatro motores RS‑25.',
+    'The engines burn propellant with the rocket held down.',
+    'Los motores consumen propelente con el cohete sujeto.',
+  ],
+  LIFTOFF: [
+    'Booster ignition, umbilical release and liftoff.',
+    'Ignición de los boosters, separación de los umbilicales y despegue.',
+    'The hold-down releases: from here on, the physics flies the rocket.',
+    'Se suelta la sujeción: desde acá vuela la física.',
+  ],
+};
+
 function stages(l: Locale): GuideContent {
   const n = P.nominal;
   const row = (id: string, what: string, published: string, model: string): string[] => [id, what, published, model];
   const met = (s: number): string => formatMet(s);
+  const T = (s: number): string => formatTMinus(s, l);
   return {
     title: L(l, 'MISSION STAGES', 'ETAPAS DE LA MISIÓN'),
     sections: [
+      {
+        title: L(l, 'Before liftoff: the terminal count', 'Antes del despegue: la cuenta final'),
+        paragraphs: [
+          L(
+            l,
+            `The mission starts on the pad at ${T(COUNT_START)}, when the ground launch sequencer (GLS) starts the terminal count NASA published for Artemis II: ${COUNTDOWN.length} milestones, all of them on the panel’s Count page. From ${T(MET_ALS)} the automated launch sequencer (ALS) runs it. The crew has no required action, as in the real count, and the holds are not simulated. Liftoff is at the real launch time, ${formatSpan(LIFTOFF_AFTER_WINDOW_OPEN, l)} after the window opened, which sets where the Sun is.`,
+            `La misión empieza en la plataforma en ${T(COUNT_START)}, cuando el secuenciador de tierra (GLS) inicia la cuenta final que publicó NASA para Artemis II: ${COUNTDOWN.length} hitos, todos en la página Count del panel. Desde ${T(MET_ALS)} la corre el secuenciador automático (ALS). La tripulación no tiene acciones obligatorias, como en la cuenta real, y las esperas no se simulan. El despegue es a la hora real del lanzamiento, ${formatSpan(LIFTOFF_AFTER_WINDOW_OPEN, l)} después de abrirse la ventana, que fija dónde está el Sol.`,
+          ),
+        ],
+        table: {
+          head: ['T‑', L(l, 'Milestone', 'Hito'), L(l, 'In the simulator', 'En el simulador')],
+          rows: COUNTDOWN.flatMap((c) => {
+            const r = COUNT_ROWS[c.id];
+            return r ? [[T(c.met), L(l, r[0], r[1]), L(l, r[2], r[3])]] : [];
+          }),
+        },
+        note: L(
+          l,
+          `Only the RS‑25 start and the booster ignition change the physics; the rest is the programmed sequence of the ground systems, shown on the Count page, in the log and in the 3D view. NASA gives the times as approximate. Sources: ${SRC_CNT}; ${SRC_LDAY}.`,
+          `Solo el arranque de los RS‑25 y la ignición de los boosters cambian la física; el resto es la secuencia programada de los sistemas de tierra, que se ve en la página Count, en el log y en la vista 3D. NASA da los tiempos como aproximados. Fuentes: ${SRC_CNT}; ${SRC_LDAY}.`,
+        ),
+      },
       {
         title: L(l, 'Event by event', 'Evento por evento'),
         paragraphs: [
@@ -138,7 +226,7 @@ function stages(l: Locale): GuideContent {
         table: {
           head: ['#', L(l, 'Event', 'Evento'), L(l, 'Published MET', 'MET publicado'), L(l, 'Model MET', 'MET del modelo')],
           rows: [
-            row('E1', L(l, `Liftoff from LC‑39B. The terminal count starts at T‑10 min; the RS‑25 engines start ${formatNumber(RS25_START_BEFORE_LIFTOFF, 2)} s before T‑0 and the boosters at T‑0.`, `Despegue desde LC‑39B. La cuenta final empieza en T‑10 min; los RS‑25 arrancan ${formatNumber(RS25_START_BEFORE_LIFTOFF, 2)} s antes de T‑0 y los boosters en T‑0.`), '000/00:00:00', '000/00:00:00'),
+            row('E1', L(l, `Liftoff from LC‑39B after the terminal count (above): the RS‑25 engines start at ${T(-RS25_START_BEFORE_LIFTOFF)} and the boosters at T‑0.`, `Despegue desde LC‑39B después de la cuenta final (arriba): los RS‑25 arrancan en ${T(-RS25_START_BEFORE_LIFTOFF)} y los boosters en T‑0.`), '000/00:00:00', '000/00:00:00'),
             row('E2', L(l, 'Booster separation at 2:08; launch abort system jettison at 3:28.', 'Separación de boosters a 2:08; eyección de la torre de escape a 3:28.'), '000/00:02:08', '000/00:02:08'),
             row('E3', L(l, `MECO at 8:06 and core stage separation into a ${formatNumber(INSERTION_ORBIT.perigee)} × ${formatNumber(INSERTION_ORBIT.apogee)} km orbit.`, `MECO a 8:06 y separación de la etapa central en una órbita de ${formatNumber(INSERTION_ORBIT.perigee)} × ${formatNumber(INSERTION_ORBIT.apogee)} km.`), '000/00:08:18', '000/00:08:18'),
             row('E4', L(l, `ICPS perigee raise (~30 s) to ${formatNumber(POST_PRM_ORBIT.perigee)} km.`, `Elevación del perigeo con el ICPS (~30 s) a ${formatNumber(POST_PRM_ORBIT.perigee)} km.`), met(MET_E4_PERIGEE_RAISE), met(P.burns.E4.met)),
@@ -302,11 +390,83 @@ function ship(l: Locale): GuideContent {
       {
         title: L(l, 'What changes along the flight', 'Qué cambia a lo largo del vuelo'),
         bullets: [
-          L(l, 'Liftoff: full stack, 98 m tall. Boosters off at 2:08, abort tower and panels at 3:28, core stage at 8:18.', 'Despegue: apilado completo, 98 m de alto. Boosters fuera a 2:08, torre y paneles a 3:28, etapa central a 8:18.'),
+          L(l, 'Liftoff: full stack, 98 m tall, held down on the Mobile Launcher until T‑0. Boosters off at 2:08, abort tower and panels at 3:28, core stage at 8:18.', 'Despegue: apilado completo, 98 m de alto, sujeto al Mobile Launcher hasta T‑0. Boosters fuera a 2:08, torre y paneles a 3:28, etapa central a 8:18.'),
           L(l, 'Orbit: Orion plus ICPS, solar arrays deployed. The ICPS leaves at 3 h 23 min with the adapter and the CubeSats.', 'Órbita: Orion más ICPS, paneles desplegados. El ICPS se va a las 3 h 23 min con el adaptador y los CubeSats.'),
           L(l, 'Cruise: Orion alone, about 26 t. The main engine, the auxiliaries and the RCS share the service module tanks.', 'Crucero: Orion sola, unas 26 t. El motor principal, los auxiliares y el RCS comparten los tanques del módulo de servicio.'),
           L(l, 'Entry: the capsule alone, about 10 t, steering with its own RCS.', 'Entrada: la cápsula sola, unas 10 t, orientándose con su propio RCS.'),
         ],
+      },
+      {
+        title: L(l, 'On the pad: Mobile Launcher 1 and Launch Complex 39B', 'En la plataforma: el Mobile Launcher 1 y el complejo 39B'),
+        paragraphs: [
+          L(
+            l,
+            'Until liftoff the rocket stands on Mobile Launcher 1 (ML‑1), the steel base and tower that carried it from the assembly building, at Launch Complex 39B of the Kennedy Space Center.',
+            'Hasta el despegue el cohete está sobre el Mobile Launcher 1 (ML‑1), la base y la torre de acero que lo llevaron desde el edificio de ensamblaje, en el complejo de lanzamiento 39B del Centro Espacial Kennedy.',
+          ),
+        ],
+        table: {
+          head: [L(l, 'Element', 'Elemento'), L(l, 'Size', 'Medida'), L(l, 'What it does', 'Qué hace')],
+          rows: [
+            [
+              L(l, 'ML‑1 base', 'Base del ML‑1'),
+              `${m(ML1.baseLength, 1)} × ${m(ML1.baseWidth, 1)} × ${m(ML1.baseHeight, 1)} m`,
+              L(
+                l,
+                `Two stories on six mounts of ${m(ML1.mountHeight, 1)} m. The deck is ${m(LAUNCH_DECK_HEIGHT, 1)} m above the pad, with a ${m(ML1.openingLength, 1)} × ${m(ML1.openingWidth, 1)} m opening for the exhaust.`,
+                `Dos pisos sobre seis montantes de ${m(ML1.mountHeight, 1)} m. La cubierta está a ${m(LAUNCH_DECK_HEIGHT, 1)} m sobre la plataforma, con una abertura de ${m(ML1.openingLength, 1)} × ${m(ML1.openingWidth, 1)} m para el escape.`,
+              ),
+            ],
+            [
+              L(l, 'Support posts (8)', 'Postes de apoyo (8)'),
+              `${m(SUPPORT_POST_HEIGHT, 1)} m`,
+              L(l, 'Four under the aft skirt of each booster; they hold the rocket until T‑0.', 'Cuatro bajo el faldón trasero de cada booster; sostienen el cohete hasta T‑0.'),
+            ],
+            [
+              L(l, 'Tower', 'Torre'),
+              `${m(ML1.towerSide, 1)} m ${L(l, 'square', 'de lado')}, ${m(ML1.towerHeight)} m`,
+              L(
+                l,
+                `A floor every ${m(ML1.floorSpacing, 1)} m; its top is about ${m(ML1.totalHeight)} m above the ground. It carries the crew access arm and the umbilicals that feed propellant, power and data until liftoff.`,
+                `Un piso cada ${m(ML1.floorSpacing, 1)} m; su tope está a unos ${m(ML1.totalHeight)} m del suelo. Lleva el brazo de acceso de la tripulación y los umbilicales que dan propelente, energía y datos hasta el despegue.`,
+              ),
+            ],
+            [
+              L(l, 'Tail service masts (2)', 'Mástiles de servicio de cola (2)'),
+              `${m(TSMU_HEIGHT, 1)} m`,
+              L(l, 'On the deck, connected to the engine section of the core stage; they retract at liftoff.', 'Sobre la cubierta, conectados a la sección de motores de la etapa central; se retraen al despegar.'),
+            ],
+            [
+              L(l, 'Pad surface', 'Superficie de la plataforma'),
+              `${m(PAD_ELEVATION, 1)} m`,
+              L(l, 'Height above mean sea level of the hardstand the Mobile Launcher stands on.', 'Altura sobre el nivel medio del mar de la explanada donde apoya el Mobile Launcher.'),
+            ],
+            [
+              L(l, 'Flame trench', 'Foso de llamas'),
+              `${m(FLAME_TRENCH.length)} × ${m(FLAME_TRENCH.width, 1)} × ${m(FLAME_TRENCH.depth, 1)} m`,
+              L(l, 'Long, wide and deep. A deflector under the opening sends the whole plume to its north side.', 'De largo, ancho y profundidad. Un deflector bajo la abertura manda todo el escape a su lado norte.'),
+            ],
+            [
+              L(l, 'Lightning masts (3)', 'Pararrayos (3)'),
+              `${m(LIGHTNING_MAST_HEIGHT)} m`,
+              L(l, 'Around the pad, with cables between their tops.', 'Alrededor de la plataforma, con cables entre sus topes.'),
+            ],
+            [
+              'Crawlerway',
+              `${m(CRAWLERWAY.total, 1)} m`,
+              L(
+                l,
+                `The road the crawler-transporter uses to bring the Mobile Launcher: two lanes of ${m(CRAWLERWAY.lane, 1)} m and a ${m(CRAWLERWAY.median, 1)} m median. The ramp up to the pad has a ${formatNumber(CRAWLERWAY.rampGrade * 100)} % grade.`,
+                `El camino por el que la oruga transportadora trae el Mobile Launcher: dos carriles de ${m(CRAWLERWAY.lane, 1)} m y una franja central de ${m(CRAWLERWAY.median, 1)} m. La rampa a la plataforma tiene una pendiente del ${formatNumber(CRAWLERWAY.rampGrade * 100)} %.`,
+              ),
+            ],
+          ],
+        },
+        note: L(
+          l,
+          `In the 3D view the pad is a model built from these figures and from NASA photos. The positions of the lightning masts, the water tower and the tanks come from OpenStreetMap; the ground layout is generic, and the angles and timing of the moving arms are approximate drawing choices, because NASA does not publish them. Sources: ${SRC_ML1}; ${SRC_UMB}; ${SRC_39B}; ${SRC_LC50}; ${SRC_CRW}.`,
+          `En la vista 3D la plataforma es un modelo hecho con estos números y con fotos de NASA. Las posiciones de los pararrayos, la torre de agua y los tanques salen de OpenStreetMap; el trazado del suelo es genérico, y los ángulos y tiempos de los brazos que se mueven son elecciones de dibujo aproximadas, porque NASA no los publica. Fuentes: ${SRC_ML1}; ${SRC_UMB}; ${SRC_39B}; ${SRC_LC50}; ${SRC_CRW}.`,
+        ),
       },
     ],
   };
@@ -352,10 +512,35 @@ function docs(l: Locale): GuideContent {
             desc: L(l, 'Masses, engines, booster thrust curve and the ascent event table.', 'Masas, motores, curva de empuje de los boosters y tabla de eventos del ascenso.'),
           },
         ],
+      },
+      {
+        title: L(l, 'Launch pad and terminal count', 'Plataforma y cuenta final'),
+        links: [
+          {
+            label: 'NASA Releases Artemis II Moon Mission Launch Countdown',
+            url: 'https://www.nasa.gov/general/nasa-releases-artemis-ii-moon-mission-launch-countdown/',
+            desc: L(l, `The terminal count from ${formatTMinus(COUNT_START, l)} to liftoff, milestone by milestone.`, `La cuenta final de ${formatTMinus(COUNT_START, l)} al despegue, hito por hito.`),
+          },
+          {
+            label: 'Mobile Launcher 1 (PDF)',
+            url: 'https://www.nasa.gov/wp-content/uploads/2021/04/final_-_mobile_launcher_1_fact_sheet.pdf',
+            desc: L(l, 'Fact sheet: base, deck, tower and support posts.', 'Hoja de datos: base, cubierta, torre y postes de apoyo.'),
+          },
+          {
+            label: 'Mobile Launcher Tower Umbilicals and Accessories (PDF)',
+            url: 'https://www.nasa.gov/wp-content/uploads/2018/06/fs-2018-02-250-ksc-ml_umbilical_fact_sheet.pdf',
+            desc: L(l, 'Fact sheet: the crew access arm, the umbilicals and what each one does at launch.', 'Hoja de datos: el brazo de acceso, los umbilicales y qué hace cada uno en el lanzamiento.'),
+          },
+          {
+            label: 'Launch Complex 39B (PDF)',
+            url: 'https://www.nasa.gov/wp-content/uploads/2018/06/launchpad39b_factsheet_013018_508.pdf',
+            desc: L(l, 'Fact sheet: flame trench, lightning masts and sound suppression water.', 'Hoja de datos: foso de llamas, pararrayos y agua de supresión de sonido.'),
+          },
+        ],
         note: L(
           l,
-          'External links to nasa.gov; they open in a new tab. The simulator’s vehicle and mission data come mostly from these guides, cited in each number. This project is not affiliated with or endorsed by NASA.',
-          'Enlaces externos a nasa.gov; se abren en otra pestaña. Los datos del vehículo y de la misión del simulador salen sobre todo de estas guías, citadas en cada número. Este proyecto no está afiliado ni avalado por NASA.',
+          'External links to nasa.gov; they open in a new tab. The simulator’s vehicle and mission data come mostly from the reference guides, and those of the pad and the count from these fact sheets and NASA’s countdown release, cited in each number. This project is not affiliated with or endorsed by NASA.',
+          'Enlaces externos a nasa.gov; se abren en otra pestaña. Los datos del vehículo y de la misión del simulador salen sobre todo de las guías de referencia, y los de la plataforma y la cuenta, de estas hojas de datos y del anuncio de la cuenta de NASA, citados en cada número. Este proyecto no está afiliado ni avalado por NASA.',
         ),
       },
     ],

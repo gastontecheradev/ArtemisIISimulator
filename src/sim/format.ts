@@ -1,6 +1,33 @@
-import { getLocale } from './i18n';
+import { Locale, getLocale } from './i18n';
 
 const pad = (n: number, w: number): string => String(n).padStart(w, '0');
+
+/**
+ * Time span in words, as the tutorial and the guides write it: "7 s", "6.36 s" (with the language's
+ * decimal mark, up to two decimals), "2 min 8 s", "10 min", "3 h 23 min" (from an hour on, to the
+ * nearest minute).
+ */
+export function formatSpan(t: number, locale: Locale = getLocale()): string {
+  const a = Math.abs(t);
+  if (a >= 3600) {
+    const total = Math.round(a / 60);
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return m > 0 ? `${h} h ${m} min` : `${h} h`;
+  }
+  const whole = Math.round(a);
+  if (a >= 60 || Math.abs(a - whole) < 1e-6) {
+    const m = Math.floor(whole / 60);
+    const s = whole % 60;
+    if (m === 0) return `${s} s`;
+    return s > 0 ? `${m} min ${s} s` : `${m} min`;
+  }
+  const text = String(Number(a.toFixed(2)));
+  return `${locale === 'es' ? text.replace('.', ',') : text} s`;
+}
+
+/** Time before liftoff in words: "T‑10 min", "T‑33 s", "T‑6.36 s", "T‑0" (non-breaking hyphen, as in the texts). */
+export const formatTMinus = (t: number, locale: Locale = getLocale()): string => (t === 0 ? 'T‑0' : `T‑${formatSpan(t, locale)}`);
 
 /** MET in DDD/HH:MM:SS format (like the cockpit clock, but with mission time). Before liftoff, signed: -000/00:00:06. */
 export function formatMet(t: number): string {

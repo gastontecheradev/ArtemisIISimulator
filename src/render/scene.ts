@@ -280,10 +280,14 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     gold: cssVar(container, '--c-ship-gold'),
   };
   const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  const stars = createStars(cssVar(container, '--c-label'));
   // Earth's atmosphere (atmosphere.ts), with the sky color of the attitude ball: only in 3D,
   // the map and the inset keep their flat infographic style.
   const atmosphere = is3d ? createAtmosphere(cssVar(container, '--c-adi-sky')) : null;
+  // In 3D the stars fade where the sky is bright (the same air as the atmosphere).
+  const stars = createStars(cssVar(container, '--c-label'), undefined, atmosphere?.haze ?? null);
+  const starEye = new THREE.Vector3();
+  /** The pad's vertical in the scene (the atmosphere bounds the Earth mesh's sag by the angle from it). */
+  const padUp = new THREE.Vector3();
   // What the pad's ground is made of (padLayout.ts), with the colors of the photo of the pad: only in 3D.
   const groundLayout = is3d
     ? createGroundLayout(
@@ -622,7 +626,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     bodies.moon.rotation.z = Math.atan2(bodies.earth.position.y - bodies.moon.position.y, bodies.earth.position.x - bodies.moon.position.x);
     bodies.eiRing.position.copy(bodies.earth.position);
     bodies.soiRing.position.copy(bodies.moon.position);
-    atmosphere?.update(bodies.earth.position, bodies.moon.position, sun.position);
+    atmosphere?.update(bodies.earth.position, bodies.moon.position, sun.position, padUp.set(axes.up.x, axes.up.y, axes.up.z));
     worldToScene(ZERO, s.t, frame, bodies.moonOrbit.position);
     // The lunar orbit is an ellipse that depends on the phase: rebuilt if the ephemeris changes.
     if (eph !== orbitEph) {
@@ -810,8 +814,10 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     cloud?.setSplit(precise ? 'far' : 'all', preciseFar);
     wake?.setSplit(precise ? 'far' : 'all', preciseFar);
     renderer.clear();
-    stars.render(renderer, cam, width / height, frameAngle);
+    // The camera relative to Earth's center, in km, for the sky brightness behind each star.
+    stars.render(renderer, cam, width / height, frameAngle, atmosphere ? starEye.copy(cam.position).sub(bodies.earth.position).divideScalar(KM_TO_SCENE) : undefined);
     renderer.clearDepth();
+    atmosphere?.setEye(cam.position);
     renderer.render(scene, cam);
     renderer.render(fxScene, cam);
     if (model) {
