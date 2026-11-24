@@ -22,6 +22,31 @@ const EARTH_NIGHT_GLOW = 0.35;
 /** Lightening of the lit Earth's color in 3D (mix with white). Low so it stays blue. */
 const EARTH_DAY_LIFT = 0.12;
 
+/**
+ * The glow on the pad's ground, on the day side, follows the relief like sunlight (drawing choice).
+ * With the Sun low (14° at liftoff), the glow is more than half of what lights flat ground, so a
+ * uniform glow flattened the slopes of the elevated pad. Now it is scaled by how much more or less
+ * sunlight a slope gets than flat ground (`cos` to the Sun over the flat one's): flat ground keeps
+ * exactly the light it had, so the ground still blends with Earth at its edge and Earth does not
+ * change. A slope turned away from the Sun keeps RELIEF_SKY of the glow (the sky that lights it), and
+ * one facing it gets at most RELIEF_MAX times the glow. Near the terminator (the Sun below
+ * RELIEF_DAY, the sine of its elevation) it fades back to the uniform glow, which is there for the
+ * night side.
+ */
+const RELIEF_SKY = 0.3;
+const RELIEF_MAX = 2;
+const RELIEF_DAY = 0.1;
+/** GLSL after the emissive radiance is set: needs the haze's `vHazeWorld`, `uEarth` and `uSun` (atmosphere.ts). */
+const RELIEF_GLOW = /* glsl */ `
+  {
+    vec3 rfUp = normalize(vHazeWorld - uEarth);
+    vec3 rfN = inverseTransformDirection(normal, viewMatrix);
+    float rfFlat = dot(rfUp, uSun);
+    float rfQ = clamp(dot(rfN, uSun) / max(rfFlat, 1e-3), 0.0, ${RELIEF_MAX.toFixed(1)});
+    float rfDay = smoothstep(0.0, ${RELIEF_DAY.toFixed(2)}, rfFlat);
+    totalEmissiveRadiance *= mix(1.0, ${RELIEF_SKY.toFixed(2)} + ${(1 - RELIEF_SKY).toFixed(2)} * rfQ, rfDay);
+  }`;
+
 export interface BodyMeshes {
   readonly group: THREE.Group;
   readonly earth: THREE.Mesh;
@@ -86,18 +111,41 @@ export const PAD_SPHERE_SECTORS = 256;
  * old sphere (facets of 1.875°) dropped 16 m per km, and below the old sphere's everywhere else.
  */
 export function padSphereRings(): number[] {
-  const first = 0.01 / R_EARTH;
-  const max = (0.5 * Math.PI) / 180;
   const thetas = [0];
   let theta = 0;
-  for (let step = first; step < max; step *= 1.08) {
+  for (let step = RING_FIRST; step < RING_MAX; step *= RING_GROWTH) {
     theta += step;
     thetas.push(theta);
   }
-  const n = Math.ceil((Math.PI - theta) / max);
+  const n = Math.ceil((Math.PI - theta) / RING_MAX);
   for (let k = 1; k <= n; k++) thetas.push(k === n ? Math.PI : theta + ((Math.PI - theta) * k) / n);
   return thetas;
 }
+/** First ring (rad), growth of the spacing per ring and largest spacing (rad) of `padSphereRings`. */
+const RING_FIRST = 0.01 / R_EARTH;
+const RING_GROWTH = 1.08;
+const RING_MAX = (0.5 * Math.PI) / 180;
+/** Safety factor of `padMeshSag` over the flat-facet estimate (checked against the mesh in a test). */
+const SAG_MARGIN = 1.25;
+
+/**
+ * Upper bound of how far the pad-centered Earth mesh sinks below the sphere (km) at the polar angle
+ * `theta` from the pad: a flat facet with sides `a` (between rings) and `b` (between sectors) dips
+ * ~(a² + b²)/8 of the radius. 0.7 mm 2 km from the pad, 0.2 m at 36 km and ~0.5 km 90° away.
+ * The atmosphere uses it to decide which lines of sight end on the ground (atmosphere.ts).
+ */
+export function padMeshSag(theta: number): number {
+  const a = Math.min((RING_GROWTH - 1) * theta + RING_FIRST, RING_MAX);
+  const b = Math.min(1, Math.sin(theta) + a) * ((2 * Math.PI) / PAD_SPHERE_SECTORS);
+  return ((SAG_MARGIN * R_EARTH) / 8) * (a * a + b * b);
+}
+/** The same bound in GLSL (`float padMeshSag(float theta)`). */
+export const PAD_MESH_SAG_GLSL = /* glsl */ `
+float padMeshSag(float theta) {
+  float a = min(${(RING_GROWTH - 1).toFixed(4)} * theta + ${RING_FIRST.toExponential(8)}, ${RING_MAX.toExponential(8)});
+  float b = min(1.0, sin(theta) + a) * ${((2 * Math.PI) / PAD_SPHERE_SECTORS).toExponential(8)};
+  return ${((SAG_MARGIN * R_EARTH) / 8).toFixed(4)} * (a * a + b * b);
+}`;
 
 /**
  * Earth mesh for the 3D view: a unit sphere with its pole on the pad (local +y, where the Earth
@@ -137,6 +185,18 @@ function circle(radius: number, segments: number, closed: boolean): THREE.Buffer
     pts.push(new THREE.Vector3(radius * Math.cos(a), radius * Math.sin(a), 0));
   }
   return new THREE.BufferGeometry().setFromPoints(pts);
+}
+
+/**
+ * What the pad's ground adds to Earth's texel (padLayout.ts): GLSL that runs with the ground's
+ * east-north position in meters (`vGroundEN`, declared here) and Earth's texel (`geoTexel`), which it
+ * may change; `roughness` runs after the roughness is set.
+ */
+export interface SurfaceLayout {
+  readonly uniforms: Record<string, THREE.IUniform>;
+  readonly head: string;
+  readonly apply: string;
+  readonly roughness: string;
 }
 
 /** NASA textures (registered in ASSETS.md), equirectangular, made by `npm run images`. */
@@ -188,24 +248,26 @@ export function earthGeoMatrix(): THREE.Matrix3 {
  * `dir` says where each vertex's direction in Earth-mesh local axes comes from: the position (Earth)
  * or the `geoDir` attribute (the pad's ground). With `hole`, the fragments inside the pad's ground
  * circle are discarded (the test uses the horizontal components, which keep their precision there).
+ * With `layout` (the pad's ground only), the ground's own layout goes over Earth's texel (padLayout.ts).
  */
 function sampleGeographic(
   material: THREE.Material,
   geo: THREE.Matrix3,
   detail: DetailUniforms,
-  opts: { dir: 'position' | 'geoDir'; hole: boolean; haze?: Haze } = { dir: 'position', hole: false },
+  opts: { dir: 'position' | 'geoDir'; hole: boolean; haze?: Haze; layout?: SurfaceLayout } = { dir: 'position', hole: false },
 ): void {
   // Each variant needs its own program: by default Three keys it on this function's source text.
-  material.customProgramCacheKey = () => `geographic|${opts.dir}|${opts.hole}|${opts.haze ? 'haze' : ''}`;
+  material.customProgramCacheKey = () => `geographic|${opts.dir}|${opts.hole}|${opts.haze ? 'haze' : ''}|${opts.layout ? 'layout' : ''}`;
   const haze = opts.haze;
+  const layout = opts.layout;
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, { uGeo: { value: geo }, ...detail }, haze?.uniforms ?? {});
+    Object.assign(shader.uniforms, { uGeo: { value: geo }, ...detail }, haze?.uniforms ?? {}, layout?.uniforms ?? {});
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        `#include <common>\nvarying vec3 vGeoDir;${opts.dir === 'geoDir' ? '\nattribute vec3 geoDir;' : ''}${haze ? '\nvarying vec3 vHazeWorld;' : ''}`,
+        `#include <common>\nvarying vec3 vGeoDir;${opts.dir === 'geoDir' ? '\nattribute vec3 geoDir;' : ''}${haze ? '\nvarying vec3 vHazeWorld;' : ''}${layout ? '\nvarying vec2 vGroundEN;' : ''}`,
       )
-      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvGeoDir = ${opts.dir};`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvGeoDir = ${opts.dir};${layout ? '\nvGroundEN = position.xy;' : ''}`)
       .replace('#include <project_vertex>', `#include <project_vertex>${haze ? '\nvHazeWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;' : ''}`);
     shader.fragmentShader = shader.fragmentShader
       // Drawn after the atmosphere, the surface hazes itself (atmosphere.ts).
@@ -221,6 +283,7 @@ function sampleGeographic(
         '#include <common>',
         `#include <common>
         ${haze ? `varying vec3 vHazeWorld;\n${haze.head}` : ''}
+        ${layout ? `varying vec2 vGroundEN;\n${layout.head}` : ''}
         varying vec3 vGeoDir;
         uniform mat3 uGeo;
         uniform sampler2D uDetail;
@@ -251,10 +314,13 @@ function sampleGeographic(
             vec4 fine = textureGrad(uDetail, duv, vec2(dux, dFdx(v)) * scale, vec2(duy, dFdy(v)) * scale);
             geoTexel = mix(geoTexel, fine, w);
           }
+          ${layout ? layout.apply : ''}
           diffuseColor *= geoTexel;
         #endif`,
       )
-      .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance *= geoTexel.rgb;');
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${layout ? `\n${layout.roughness}` : ''}`)
+      // On the pad's ground (the variant with haze), the day-side glow follows the relief.
+      .replace('#include <emissivemap_fragment>', `totalEmissiveRadiance *= geoTexel.rgb;${haze ? RELIEF_GLOW : ''}`);
   };
 }
 
@@ -264,14 +330,14 @@ function sampleGeographic(
  * until those load, and on the 2D map and the inset, they are plain-colored spheres.
  * With `pad` (only the 3D view) Earth uses the pad-centered mesh, leaves a hole where the pad's own
  * ground goes, and offers the material for that ground, which adds the atmosphere's `haze` itself
- * (it is drawn after the atmosphere).
+ * (it is drawn after the atmosphere) and wears the ground's `layout` over Earth's texture.
  */
 export function createBodies(
   colors: { earth: string; moon: string; orbit: string; ei: string },
   /** 2D map: lightened Moon (mixed with white, no new hues) and a more visible orbit. */
   contrast = false,
   textures: BodyTextures | null = null,
-  pad: { haze: Haze } | null = null,
+  pad: { haze: Haze; layout?: SurfaceLayout } | null = null,
 ): BodyMeshes {
   const padCentered = pad !== null;
   const group = new THREE.Group();
@@ -332,7 +398,7 @@ export function createBodies(
     sampleGeographic(earthMat.flat, geo, detail, opts);
     sampleGeographic(earthMat.lit, geo, detail, opts);
     if (padCentered) sampleGeographic(earthDepthMaterial, geo, detail, opts);
-    if (groundMat && pad) sampleGeographic(groundMat, geo, detail, { dir: 'geoDir', hole: false, haze: pad.haze });
+    if (groundMat && pad) sampleGeographic(groundMat, geo, detail, { dir: 'geoDir', hole: false, haze: pad.haze, layout: pad.layout });
   }
   const size = textures?.size ?? '2k';
   if (textures?.detail) {

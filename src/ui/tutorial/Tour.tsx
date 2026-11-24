@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SimState } from '../../sim/state';
 import { useLocale, useT } from '../i18n';
-import { setTour } from '../store';
-import { tourSteps } from './steps';
+import { setTour, useViewState } from '../store';
+import { TourView, tourSteps } from './steps';
 
 interface Box {
   left: number;
@@ -47,18 +47,22 @@ function Hand({ box }: { box: Box }): JSX.Element {
 /**
  * Guided tutorial: a callout next to the element explaining each step, with the element
  * highlighted. It does not block the screen: the action steps are completed using the actual
- * panel and advance on their own when the simulation registers the action.
+ * panel and advance on their own when the simulation registers the action. The hand points at
+ * the button to press while an action step is not completed, and on an information step while
+ * its `press` names one.
  */
 export function Tour({ s, index }: { s: SimState; index: number }): JSX.Element | null {
   const t = useT();
   const TOUR_STEPS = tourSteps(useLocale());
+  const camera3d = useViewState().camera['3d'];
   const step = TOUR_STEPS[index];
   const cardRef = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<Box | null>(null);
   const [press, setPress] = useState<Box | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const view: TourView = { camera3d };
   const done = step?.until ? step.until(s) : true;
-  const pressId = !done && step?.press ? step.press(s) : null;
+  const pressId = step?.press && !(step.until && done) ? step.press(s, view) : null;
 
   // Action steps advance on their own when completed.
   useEffect(() => {
@@ -75,7 +79,7 @@ export function Tour({ s, index }: { s: SimState; index: number }): JSX.Element 
       const next = boxOf(step?.target ? `[data-tour="${step.target}"]` : null);
       setTarget((prev) => (sameBox(prev, next) ? prev : next));
       // Re-evaluated on every measure: some steps depend on what the displays show (opening Procs).
-      const id = pressId && step?.press ? step.press(s) : null;
+      const id = pressId && step?.press ? step.press(s, { camera3d }) : null;
       const hand = boxOf(id ? `[data-press="${id}"]` : null);
       setPress((prev) => (sameBox(prev, hand) ? prev : hand));
     };
@@ -86,7 +90,7 @@ export function Tour({ s, index }: { s: SimState; index: number }): JSX.Element 
       clearInterval(id);
       window.removeEventListener('resize', measure);
     };
-  }, [step, pressId]);
+  }, [step, pressId, camera3d]);
 
   // Places the callout next to the element, wherever there is room, without leaving the window.
   useLayoutEffect(() => {

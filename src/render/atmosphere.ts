@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ATMOSPHERE_LAYERS, SEA_LEVEL_DENSITY, airDensity } from '../sim/atmosphere';
 import { EI_ALTITUDE, R_EARTH, R_MOON } from '../sim/constants';
+import { PAD_MESH_SAG_GLSL } from './bodies';
 import { KM_TO_SCENE } from './worldToScene';
 
 /*
@@ -120,9 +121,22 @@ vec4 airScatter(vec3 o, vec3 d, float t0, float t1) {
 }
 `;
 
+/**
+ * How far below the sphere a line of sight has to dip to count as ending on the ground (km), on top
+ * of the mesh's own sag (padMeshSag). The drawn ground is never exactly the sphere: Earth's mesh is a
+ * unit sphere in float32, scaled (~0.4 m), and its facets sink between vertices. A line of sight that
+ * grazed the sphere but missed the meshes let the black background through the haze: a dotted line
+ * on the horizon. Now those lines of sight count as sky; where the mesh is there, the sky covers a
+ * sliver thinner than that margin, which is what the eye takes for the horizon anyway.
+ */
+const GROUND_MARGIN_KM = 0.002;
+
 const FRAGMENT = /* glsl */ `
 ${AIR_GLSL}
+${PAD_MESH_SAG_GLSL}
 uniform vec3 uMoon;
+uniform vec3 uPadUp;
+uniform float uEyeAlt;
 varying vec3 vWorld;
 const float R_M = ${R_MOON.toFixed(1)};
 
@@ -133,9 +147,16 @@ void main() {
   vec2 air = airSphere(o, d, AIR_R_TOP);
   float t0 = max(air.x, 0.0);
   float t1 = air.y;
-  // The line of sight ends on the ground or on the Moon.
-  vec2 ground = airSphere(o, d, AIR_R_E);
-  if (ground.x <= ground.y && ground.y > 0.0) t1 = min(t1, max(ground.x, 0.0));
+  // The line of sight ends on the ground or on the Moon. For the ground, R² minus the squared
+  // distance of the line's closest point to Earth's center, with the camera's altitude computed in
+  // double precision (uEyeAlt): in float32, |o|² − R² is only good to a few km².
+  float b = dot(o, d);
+  float g2 = b * b - uEyeAlt * (2.0 * AIR_R_E + uEyeAlt);
+  if (g2 > 0.0 && sqrt(g2) - b > 0.0) {
+    float th = acos(clamp(dot(normalize(o - b * d), uPadUp), -1.0, 1.0));
+    float dip = ${GROUND_MARGIN_KM.toFixed(4)} + padMeshSag(th);
+    if (g2 > 2.0 * AIR_R_E * dip) t1 = min(t1, max(-b - sqrt(g2), 0.0));
+  }
   vec2 moon = airSphere((cameraPosition - uMoon) * AIR_KM, d, R_M);
   if (moon.x <= moon.y && moon.y > 0.0) t1 = min(t1, max(moon.x, 0.0));
   if (t1 <= t0) discard;
@@ -160,8 +181,10 @@ export interface Haze {
 export interface Atmosphere {
   readonly mesh: THREE.Mesh;
   readonly haze: Haze;
-  /** Scene positions of Earth and the Moon, and the direction towards the Sun. */
-  update(earth: THREE.Vector3, moon: THREE.Vector3, sun: THREE.Vector3): void;
+  /** Scene positions of Earth and the Moon, the direction towards the Sun and the pad's vertical. */
+  update(earth: THREE.Vector3, moon: THREE.Vector3, sun: THREE.Vector3, padUp: THREE.Vector3): void;
+  /** Scene position of the camera that draws it, before each draw (after `update`). */
+  setEye(camera: THREE.Vector3): void;
   dispose(): void;
 }
 
@@ -195,7 +218,7 @@ export function createAtmosphere(color: string): Atmosphere {
     }`,
   };
   const material = new THREE.ShaderMaterial({
-    uniforms: { ...shared, uMoon: { value: new THREE.Vector3() } },
+    uniforms: { ...shared, uMoon: { value: new THREE.Vector3() }, uPadUp: { value: new THREE.Vector3(0, 1, 0) }, uEyeAlt: { value: 0 } },
     vertexShader: VERTEX,
     fragmentShader: FRAGMENT,
     // Premultiplied: color added, background times (1 − alpha).
@@ -219,11 +242,16 @@ export function createAtmosphere(color: string): Atmosphere {
   return {
     mesh,
     haze,
-    update(earth, moon, sun) {
+    update(earth, moon, sun, padUp) {
       mesh.position.copy(earth);
       (u.uEarth.value as THREE.Vector3).copy(earth);
       (u.uMoon.value as THREE.Vector3).copy(moon);
       (u.uSun.value as THREE.Vector3).copy(sun).normalize();
+      (u.uPadUp.value as THREE.Vector3).copy(padUp).normalize();
+    },
+    setEye(camera) {
+      // In double precision here: the shader only gets the altitude, not two numbers of ~6,378 km to subtract.
+      u.uEyeAlt.value = camera.distanceTo(u.uEarth.value as THREE.Vector3) / KM_TO_SCENE - R_EARTH;
     },
     dispose() {
       mesh.geometry.dispose();

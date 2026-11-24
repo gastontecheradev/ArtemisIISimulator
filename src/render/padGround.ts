@@ -16,8 +16,9 @@ import { Vec3, rotateZ, vec3 } from '../sim/math/vec3';
  * sphere and would otherwise paint the sky over the elevated pad (from the ground it is above the
  * horizon), and it adds the same haze itself (atmosphere.ts). The exhaust wake comes after it and
  * is hidden by it where it should be. The spacecraft pass writes the ground's depth again with its
- * own close far plane (scene.ts), so it hides the spacecraft and, later, the pad at millimeter
- * precision. Until the layout of stage 6 it wears Earth's texture.
+ * own close far plane (scene.ts), so it hides the spacecraft and the pad at millimeter precision.
+ * Its colors are Earth's texture with the ground's own layout over it (padLayout.ts: concrete, grass,
+ * roads, the crawlerway, the beach and the sea), which fades into that texture before the edge.
  */
 
 /**
@@ -297,7 +298,7 @@ export interface PadGround {
   dispose(): void;
 }
 
-/** The pad's ground with `material` (Earth's lit material, sampling by `geoDir`; see bodies.ts). */
+/** The pad's ground with `material` (Earth's lit material, sampling by `geoDir`, with the layout; see bodies.ts). */
 export function createPadGround(material: THREE.Material): PadGround {
   const geometry = buildGroundGeometry();
   // In the transparent queue only for its place in it: after the atmosphere (−1), before the

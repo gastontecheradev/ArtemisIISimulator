@@ -17,6 +17,7 @@ import { createOverlay } from './markers';
 import { createPadModel } from './pad';
 import { createPadCloud, riseFromTrail } from './padCloud';
 import { createPadGround, liftAboveGround, padAxes, padCameraEye } from './padGround';
+import { createGroundLayout } from './padLayout';
 import { createStars } from './stars';
 import { createTrails } from './trails';
 import { PAD_ANCHOR_STATION, createDebrisModels, createVehicleModel, debrisLength, vehicleExtent, vehicleIconSvg } from './vehicle';
@@ -279,16 +280,34 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     gold: cssVar(container, '--c-ship-gold'),
   };
   const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  const stars = createStars(cssVar(container, '--c-label'));
   // Earth's atmosphere (atmosphere.ts), with the sky color of the attitude ball: only in 3D,
   // the map and the inset keep their flat infographic style.
   const atmosphere = is3d ? createAtmosphere(cssVar(container, '--c-adi-sky')) : null;
+  // In 3D the stars fade where the sky is bright (the same air as the atmosphere).
+  const stars = createStars(cssVar(container, '--c-label'), undefined, atmosphere?.haze ?? null);
+  const starEye = new THREE.Vector3();
+  /** The pad's vertical in the scene (the atmosphere bounds the Earth mesh's sag by the angle from it). */
+  const padUp = new THREE.Vector3();
+  // What the pad's ground is made of (padLayout.ts), with the colors of the photo of the pad: only in 3D.
+  const groundLayout = is3d
+    ? createGroundLayout(
+        {
+          grass: cssVar(container, '--c-ground-grass'),
+          scrub: cssVar(container, '--c-ground-scrub'),
+          sand: cssVar(container, '--c-ground-sand'),
+          water: cssVar(container, '--c-ground-water'),
+          road: cssVar(container, '--c-ground-road'),
+          concrete: cssVar(container, '--c-pad-concrete'),
+        },
+        anisotropy,
+      )
+    : null;
   const bodies = createBodies({
     earth: cssVar(container, '--c-body-earth'),
     moon: cssVar(container, '--c-body-moon'),
     orbit: cssVar(container, '--c-label'),
     ei: cssVar(container, '--c-caution'),
-  }, isMap, is3d ? { size: '4k', anisotropy: renderer.capabilities.getMaxAnisotropy(), detail: true } : null, atmosphere ? { haze: atmosphere.haze } : null);
+  }, isMap, is3d ? { size: '4k', anisotropy: renderer.capabilities.getMaxAnisotropy(), detail: true } : null, atmosphere ? { haze: atmosphere.haze, layout: groundLayout?.surface } : null);
   bodies.setLit(is3d);
   // The pad's own ground (padGround.ts), only in 3D: Earth leaves a hole for it.
   const ground = is3d && bodies.groundMaterial ? createPadGround(bodies.groundMaterial) : null;
@@ -607,7 +626,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     bodies.moon.rotation.z = Math.atan2(bodies.earth.position.y - bodies.moon.position.y, bodies.earth.position.x - bodies.moon.position.x);
     bodies.eiRing.position.copy(bodies.earth.position);
     bodies.soiRing.position.copy(bodies.moon.position);
-    atmosphere?.update(bodies.earth.position, bodies.moon.position, sun.position);
+    atmosphere?.update(bodies.earth.position, bodies.moon.position, sun.position, padUp.set(axes.up.x, axes.up.y, axes.up.z));
     worldToScene(ZERO, s.t, frame, bodies.moonOrbit.position);
     // The lunar orbit is an ellipse that depends on the phase: rebuilt if the ephemeris changes.
     if (eph !== orbitEph) {
@@ -795,8 +814,10 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
     cloud?.setSplit(precise ? 'far' : 'all', preciseFar);
     wake?.setSplit(precise ? 'far' : 'all', preciseFar);
     renderer.clear();
-    stars.render(renderer, cam, width / height, frameAngle);
+    // The camera relative to Earth's center, in km, for the sky brightness behind each star.
+    stars.render(renderer, cam, width / height, frameAngle, atmosphere ? starEye.copy(cam.position).sub(bodies.earth.position).divideScalar(KM_TO_SCENE) : undefined);
     renderer.clearDepth();
+    atmosphere?.setEye(cam.position);
     renderer.render(scene, cam);
     renderer.render(fxScene, cam);
     if (model) {
@@ -854,6 +875,7 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
       model?.dispose();
       debrisModels?.dispose();
       ground?.dispose();
+      groundLayout?.dispose();
       padModel?.dispose();
       renderer.dispose();
       renderer.domElement.remove();

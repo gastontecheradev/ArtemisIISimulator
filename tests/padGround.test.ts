@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { PAD_SPHERE_SECTORS, earthGeoMatrix, latLongSphere, padSphereRings } from '../src/render/bodies';
+import { PAD_SPHERE_SECTORS, earthGeoMatrix, latLongSphere, padMeshSag, padSphereRings } from '../src/render/bodies';
 import {
   GROUND_RADIUS_M,
   PAD_CAMERA,
@@ -206,6 +206,28 @@ describe('Pad-centered Earth mesh (3D)', () => {
       }
       expect(maxNew, `${(s / 1000).toFixed(3)} km from the pad`).toBeLessThanOrEqual(maxOld);
     }
+  });
+
+  it('never sinks below the sphere more than padMeshSag says (what the atmosphere takes as ground)', () => {
+    const cells = cellsOf(mesh, PAD_SPHERE_SECTORS);
+    const pad = vec3(0, 1, 0);
+    let tightest = Infinity;
+    for (let s = 1; s < Math.PI * R_M; s *= 1.3) {
+      const a = s / R_M;
+      let deepest = 0;
+      for (let k = 0; k < 720; k++) {
+        const psi = ((k + 0.37) * 2 * Math.PI) / 720;
+        const u = normalize(add(scale(pad, Math.cos(a)), scale(vec3(Math.cos(psi), 0, Math.sin(psi)), Math.sin(a))));
+        deepest = Math.max(deepest, (1 - radiusAlong(mesh, thetas, PAD_SPHERE_SECTORS, cells, u)) * R_EARTH);
+      }
+      expect(deepest, `${(s / 1000).toFixed(3)} km from the pad`).toBeLessThanOrEqual(padMeshSag(a));
+      if (deepest > 1e-6) tightest = Math.min(tightest, padMeshSag(a) / deepest);
+    }
+    // A bound, not a guess: never more than ~4 times the real sag where there is one to speak of.
+    expect(tightest).toBeLessThan(4);
+    // The numbers in its comment.
+    expect(padMeshSag(36 / R_EARTH)).toBeLessThan(0.0003);
+    expect(padMeshSag(Math.PI / 2)).toBeGreaterThan(0.4);
   });
 });
 

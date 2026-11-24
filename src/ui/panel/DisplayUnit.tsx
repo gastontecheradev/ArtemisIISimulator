@@ -118,12 +118,15 @@ export function DisplayUnit({ s, initial, index, countdown = false }: { s: SimSt
   const brightness = ui.brightness[index] ?? 1;
   const unacked = s.alarms.filter((a) => !a.acked).length;
 
-  // The bottom Procs key carries `data-press` so the tutorial can point at it when Procs is not on screen.
+  // Keys the tutorial points at (`data-press`): the bottom Procs key, when Procs is not on screen,
+  // and the top Count key, the half where Flt.Count goes during the terminal count.
+  const tabPress = (id: PageId, bottom: boolean): string | undefined =>
+    bottom && id === 'PROCS' ? 'tab-procs' : !bottom && id === 'COUNT' ? 'tab-count' : undefined;
   const pageKeys = (group: PageGroup, setGroup: (g: PageGroup) => void, setPage: (p: PageId) => void, bottom = false): JSX.Element[] =>
     menuSlots(group).map((id, i) => {
       if (id === null) return <Key key={i} />;
       if (id === '▲') return <Key key={i} action={() => setGroup(group === 'Flt' ? 'Sys' : 'Flt')} label={t('du.up')} />;
-      return <Key key={i} action={() => setPage(id)} label={PAGES[id].title} press={bottom && id === 'PROCS' ? 'tab-procs' : undefined} />;
+      return <Key key={i} action={() => setPage(id)} label={PAGES[id].title} press={tabPress(id, bottom)} />;
     });
 
   const setBrightness = (delta: number): void => {

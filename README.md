@@ -2,7 +2,7 @@
 
 A web simulator of the Artemis II mission: a crewed free-return flight around the Moon, from the launch pad to atmospheric entry. Nothing is drawn in advance. The rocket climbs on the thrust and mass of its engines, and the trajectory is decided by the gravity of Earth and the Moon.
 
-On the left is the spacecraft panel, inspired by Orion's cockpit, with a mission control window (Houston) that gives the calls for each stage. On the right, a fixed 2D map, like an infographic, with the whole mission plan and the flight data, and below it a 3D view that follows the spacecraft up close.
+On the left is the spacecraft panel, inspired by Orion's cockpit, with a mission control window that gives the calls for each stage (Kennedy's launch control during the terminal count, then Houston). On the right, a fixed 2D map, like an infographic, with the whole mission plan and the flight data, and below it a 3D view that follows the spacecraft up close.
 
 The interface is in **English** (default) and **Spanish**. The vehicle data, the timeline and the target orbits come from the reference guides NASA published for Artemis II.
 
@@ -20,8 +20,10 @@ npm run dev
 Open the address shown in the terminal. First you pick the language; then the guides menu appears (mission objective, stages, budget, power management, about the spacecraft and NASA documentation), which you can reopen with the GUIDES button. From the start screen you can:
 
 - **Start the mission** and fly it yourself.
-- Take the **guided tutorial**, which explains the spacecraft and the panel and walks you through liftoff and the first burn.
-- Turn on **demo mode**, where the automatic crew flies everything.
+- Take the **guided tutorial**, which explains the spacecraft, the panel, the launch pad and the terminal count, and walks you through liftoff and the first burn.
+- Turn on **demo mode**, where the automatic crew flies everything, from T‑10 min at ×10.
+
+Every mission starts on the launch pad at T‑10 min, with the rocket on the Mobile Launcher.
 
 ## How to fly
 
@@ -36,7 +38,7 @@ Open the address shown in the terminal. First you pick the language; then the gu
 | Space | Play / pause |
 | `+` and `−` | Raise and lower the warp |
 | `A` | Acknowledge alarms |
-| `1` to `5` | 3D view camera: automatic, overview, spacecraft, Earth, Moon |
+| `1` to `6` | 3D view camera: automatic, overview, spacecraft, Earth, Moon, launch pad |
 | `←` and `→` | Pitch the spacecraft (the autopilot goes to manual) |
 | `Z` and `X` | Yaw |
 | `Q` and `E` | Roll |

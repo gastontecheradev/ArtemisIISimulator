@@ -44,6 +44,11 @@
   --c-pad-hood: #b3b2b3; /* tail service mast hood */
   --c-smoke-steam: #dcd9d9; /* launch cloud steam, in the sun */
   --c-smoke-tan: #ceb191; /* booster smoke, in the sun */
+  --c-ground-grass: #778c4f; /* mowed grass */
+  --c-ground-scrub: #4d603b; /* scrub beyond the mowed grounds */
+  --c-ground-sand: #c0b6ab; /* bare sand */
+  --c-ground-water: #4b82ae; /* sea near the shore */
+  --c-ground-road: #e0dad2; /* paved service road */
 }
 /* palette:end */
 

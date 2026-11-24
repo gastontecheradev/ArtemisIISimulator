@@ -1,26 +1,25 @@
 import { useEffect, useRef } from 'react';
-import { CameraMode, ViewDim, createTrajectoryView, effectiveCameraMode, insetTarget } from '../render/scene';
+import { ViewDim, createTrajectoryView, effectiveCameraMode, insetTarget } from '../render/scene';
 import { tick } from '../sim/commands';
 import { useT } from './i18n';
 import { MapHud } from './panel/MapHud';
-import { getViewSettings, setCamera, setViewState, simStore, useSim, useViewState } from './store';
-
-/** In the order of the toolbar and of the keys 1–6. */
-export const CAMERA_MODES: readonly CameraMode[] = ['auto', 'overview', 'ship', 'earth', 'moon', 'pad'];
+import { CAMERA_MODES, getViewSettings, setCamera, setViewState, simStore, useSim, useViewState } from './store';
 
 interface GroupProps<T extends string> {
   title: string;
   options: readonly { id: T; label: string }[];
   value: T;
   onChange: (id: T) => void;
+  /** Prefix of the buttons' `data-press` (`cam` → `cam-pad`): the tutorial points at them. */
+  press?: string;
 }
 
-function Group<T extends string>({ title, options, value, onChange }: GroupProps<T>): JSX.Element {
+function Group<T extends string>({ title, options, value, onChange, press }: GroupProps<T>): JSX.Element {
   return (
     <div className="tb-group">
       <span className="tb-title">{title}</span>
       {options.map((o) => (
-        <button key={o.id} className={o.id === value ? 'tb-btn on' : 'tb-btn'} onClick={() => onChange(o.id)}>
+        <button key={o.id} className={o.id === value ? 'tb-btn on' : 'tb-btn'} data-press={press ? `${press}-${o.id}` : undefined} onClick={() => onChange(o.id)}>
           {o.label}
         </button>
       ))}
@@ -96,7 +95,7 @@ export function TrajectoryView({ onCredits, onTutorial, onGuides }: { onCredits:
         </div>
         <div className="toolbar">
           <span className="pane-title">{t('vw.3d')}</span>
-          <Group title={t('vw.camera')} options={CAMERA_MODES.map((id) => ({ id, label: t(`cam.${id}`) }))} value={view.camera['3d']} onChange={(mode) => setCamera('3d', mode)} />
+          <Group title={t('vw.camera')} options={CAMERA_MODES.map((id) => ({ id, label: t(`cam.${id}`) }))} value={view.camera['3d']} onChange={(mode) => setCamera('3d', mode)} press="cam" />
         </div>
         <div className="legend">
           <span className="hint">{t(effectiveCameraMode(view.camera['3d'], s.t) === 'pad' ? 'vw.hintPad' : 'vw.hint3d')}</span>

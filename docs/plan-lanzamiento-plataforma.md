@@ -1,7 +1,7 @@
 # Plan: lanzamiento desde la plataforma
 
 **Pedido (Gastón, sesión 40):** planificar el lanzamiento del cohete desde la base, con el modelo 3D de la plataforma, las animaciones de la nave y de la base, el humo, la información y los controles del panel, el tutorial y los demás lugares que toca la funcionalidad. También evaluar cómo mejorar la textura del terreno cercano.
-**Fecha:** 2026-11-21. **Estado:** etapa 1 (cuenta final) hecha en la sesión 41; lo que cambió al implementarla está en la decisión 45 de `process.md`. Etapa 0 completa en la sesión 42 (imágenes, elevación, brazos de la torre medidos y posiciones en el suelo de OpenStreetMap, ver §2). Etapa 2 (suelo y cámara PLATAFORMA) hecha en la sesión 43; lo que cambió respecto de §4.2 y §4.6 está en la decisión 47 de `process.md`. Etapa 3 (modelo del ML‑1 y de LC‑39B, apoyo en los postes) hecha en la sesión 44; lo que cambió respecto de §4.3 está en la decisión 48 de `process.md` y en "Cómo quedó" (§4.3). Etapa 4 (animaciones) hecha en la sesión 45 (decisión 49, §4.4). Etapa 5 (vapor, agua y nube del foso, orden de lo transparente) hecha en la sesión 46 (decisión 50, §4.5). Decisiones D1–D9 tomadas: Gastón aceptó todas las recomendaciones (sesión 40).
+**Fecha:** 2026-11-21. **Estado:** etapa 1 (cuenta final) hecha en la sesión 41; lo que cambió al implementarla está en la decisión 45 de `process.md`. Etapa 0 completa en la sesión 42 (imágenes, elevación, brazos de la torre medidos y posiciones en el suelo de OpenStreetMap, ver §2). Etapa 2 (suelo y cámara PLATAFORMA) hecha en la sesión 43; lo que cambió respecto de §4.2 y §4.6 está en la decisión 47 de `process.md`. Etapa 3 (modelo del ML‑1 y de LC‑39B, apoyo en los postes) hecha en la sesión 44; lo que cambió respecto de §4.3 está en la decisión 48 de `process.md` y en "Cómo quedó" (§4.3). Etapa 4 (animaciones) hecha en la sesión 45 (decisión 49, §4.4). Etapa 5 (vapor, agua y nube del foso, orden de lo transparente) hecha en la sesión 46 (decisión 50, §4.5). Etapa 6 (trazado del suelo cercano) hecha en la sesión 47 (decisión 51, "Cómo quedó (etapa 6)" en §4.2). Etapa 7 (tutorial, guías, inicio y documentación) hecha en la sesión 48 (decisión 52, "Cómo quedó (etapa 7)" en §4.8); las sombras no se hicieron (§4.6). **El plan está completo.** Decisiones D1–D9 tomadas: Gastón aceptó todas las recomendaciones (sesión 40).
 **Cómo se armó:** se leyó el código (`sim/state.ts`, `sim/advance.ts`, `sim/capcom.ts`, `render/scene.ts`, `render/bodies.ts`, `render/earthDetail.ts`, `render/vehicle.ts`, `render/wake.ts`, `ui/tutorial/steps.tsx`, `ui/panel/pages/index.ts`). Se muestreó la textura `earth-day-pad` en LC‑39B y se leyeron la hoja de datos del Mobile Launcher 1 de NASA y la página de NASA con la cuenta final de Artemis II. No hay capturas, porque esta copia del proyecto no tiene `node_modules` (falta correr `npm install`).
 
 Lo que se lee directo de una fuente va sin marca. Lo que es interpretación va marcado *(interpretación)* y lo que es elección de dibujo, *(elección de dibujo)*.
@@ -186,7 +186,7 @@ Controles: los tres pararrayos y la torre de agua coinciden con las fotos (en `l
 - ~~Elevación de LC‑39B~~: conseguida ([LC50], arriba).
 - ~~Imágenes de referencia~~: elegidas por Gastón (`docs/reference/launch/`, arriba).
 - ~~Posiciones de los pararrayos, la torre de agua y los tanques~~: de OpenStreetMap (arriba), con crédito.
-- **La rampa del crawlerway, el cerco y el trazado del suelo:** no se calcan (decisión de Gastón, sesión 42). El suelo de la etapa 6 es genérico; la orientación sí se conoce (foso al norte [39B], crawlerway desde el sur).
+- **La rampa del crawlerway, el cerco y el trazado del suelo:** no se calcan (decisión de Gastón, sesión 42). El suelo de la etapa 6 es genérico; la orientación sí se conoce (foso al norte [39B], crawlerway desde el sur). En la etapa 6 (sesión 47) se consiguieron el ancho del crawlerway y la pendiente de la rampa (**[CRW]**, NASA IS‑2003‑09‑006‑KSC: *"The Crawlerway is a 130-foot-wide (39.6-meter) roadway ... two 40-foot- (12-meter-) wide lanes, separated by a 50-foot- (15-meter-) wide median strip"*; *"The ramp leading up to the pad surface is inclined at a 5 percent grade"*) y se midió la costa en la textura de NASA (§4.2, "Cómo quedó (etapa 6)").
 
 ## 3. Decisiones
 
@@ -251,6 +251,24 @@ Hay tres problemas, ordenados de más grave a menos.
 - El **ruido de detalle** modula el color del nivel de abajo según la distancia a la cámara, para que de cerca no se vea una mancha lisa *(elección de dibujo)*.
 - Lejos de la plataforma, el suelo propio se funde con el color del parche: su shader muestrea la misma textura de la Tierra, así que no se ve el borde.
 - **No se usan** ortofotos de alta resolución de otros titulares (USDA/NAIP o el estado de Florida), por el criterio de `ASSETS.md`.
+
+**Cómo quedó (etapa 6, sesión 47; decisión 51):** el trazado está en `render/padLayout.ts`, como formas en metros (polígonos, bandas a lo largo de polilíneas y discos) pintadas de abajo hacia arriba; `surfaceAt` dice de qué es cada punto con el mismo orden, y los tests la usan.
+
+- **Qué tiene:**
+  - hormigón en toda la plataforma elevada (cima y talud, la misma forma que el relieve), con juntas de losas cada 6 m de cerca, y en la salida del foso;
+  - el piso del foso pintado, para cuando no se dibuja la plataforma;
+  - pasto cortado en un octógono de 560 m de apotema con camino perimetral, y monte alrededor;
+  - el crawlerway de [CRW] (dos carriles de 40 ft de grava y una franja central de pasto de 50 ft) desde el sur, recto sobre el eje del cohete, y un camino de acceso a su lado;
+  - caminos a los tres tanques y apoyos de hormigón bajo los tanques, la torre de agua y los pararrayos;
+  - la playa (40 m) y el mar al este.
+- **La costa** se midió en la textura de NASA (`earth-day-pad`): en cada fila de píxeles, dónde un índice de agua cruza la mitad; después, una parábola por diez filas (`COASTLINE` en `constants.ts`). Queda a ~1,9 km al este‑noreste, con ±1 km (el WebP y el JPG difieren hasta 1,2 km). Las lagunas no se dibujan: la textura no alcanza para ubicarlas.
+- **Resolución:** dos texturas de 2048² en lugar de los niveles de la tabla: 0,78 m/px sobre ±800 m (todo el octógono) y 5 m/px hasta 5 km (~45 MB de video con mipmaps).
+- **Ruido de detalle:** tres escalas (0,6, 4 y 26 m), cada una apagada según el tamaño del píxel en el suelo.
+- **Agua:** rugosidad 0,2 (brillo del Sol). El agua va en el canal alfa de las texturas.
+- **Fundido:** el trazado pesa 1 hasta 3 km y 0 en el borde de 5 km, así que en la franja de solape y el faldón el suelo muestra el mismo texel que la Tierra. No hizo falta muestrear la textura de la Tierra en otro lado: el material del suelo ya la tenía.
+- **Material:** el de la Tierra con `geoDir` y la bruma, con un gancho de GLSL propio de la variante del suelo (`SurfaceLayout` en `bodies.ts`); la Tierra no cambia.
+- **Colores:** de `ML-1-image-1.jpg` (pasto, monte, arena, mar, camino; el hormigón ya estaba). El pasto de `ML1-image-3.jpg` está latente (marrón) y no se usó.
+- **No se hizo:** el parche regional de Landsat (D6) ni la rampa en el relieve.
 
 ### 4.3 Modelo 3D de la plataforma (`render/pad.ts`, nuevo)
 
@@ -350,6 +368,7 @@ Todas salen del tiempo de la cuenta (`countdownStatus`) o del estado de la simul
 - **`camera.ts`:** un rig de perspectiva que acepte un ojo fijo y su propio vector hacia arriba, sin `OrbitControls`. La cámara nunca entra en el suelo: `keepOutside` se aplica contra la malla de suelo, no contra la esfera.
 - **Cómo quedó (etapa 2, sesión 43; decisión 47):** la cámara está a 400 m al sur‑sudoeste (200°): al sudoeste el pararrayos de 221° y 157 m (OpenStreetMap) quedaba delante del cohete. Mira un poco debajo del centro del vehículo para que se vea el suelo. AUTO pasa a NAVE solo por tiempo (T+30 s), en 2,5 s. El rig de `camera.ts` separa la cámara que se dibuja de la que mueven los `OrbitControls` y las mezcla durante el paso; la cámara NAVE se mantiene sobre el relieve del suelo además de fuera de la esfera.
 - **Sombras (opcional):** el Sol está a ~1 h de la puesta y daría sombras largas del cohete y de la torre. Serían un mapa de sombras acotado a la plataforma (~600 m) en la pasada de la nave. Se evalúa al final, según el rendimiento.
+- **Sombras, cómo quedó (etapa 7, sesión 48; decisión 52): no se hicieron.** Una captura de PLATAFORMA en T‑60 s tarda 108 s en SwiftShader (las de la etapa 6, 81–264 s), y nada de lo pesado de las etapas 2 a 6 (bruma del suelo, nube, texturas del trazado) se midió todavía en una GPU: sumar otra pasada antes de medir no deja saber qué cuesta qué. Además, con el Sol del modelo a 14,4° sobre el horizonte al despegue (`sunDirection(0)`), las sombras miden ~3,9 veces la altura: ~470 m la de la torre y ~715 m la de los pararrayos, hacia el este. Un mapa de 600 m alrededor de la plataforma las cortaría; tendría que llegar a ~1 km al este (con 2048² de resolución, ~0,5 m por texel). Hay riesgo técnico con el buffer de profundidad logarítmico, el origen flotante y el material propio del suelo. Queda para después de medir el rendimiento en la máquina de Gastón.
 
 ### 4.7 Panel y textos
 
@@ -381,6 +400,13 @@ Todas salen del tiempo de la cuenta (`countdownStatus`) o del estado de la simul
 - **`ASSETS.md` y Créditos:** solo si entra una imagen nueva (D6).
 - **`CLAUDE.md`:** "Modelo físico" (cuenta desde T‑10 min, cohete sobre la cubierta), "La nave" (apoyo en los postes), "Vista de trayectoria" (cámara PLATAFORMA, suelo propio, malla polar), estructura, "Dónde tocar" (plataforma, cuenta y suelo), las fuentes nuevas ([ML1], [CNT]) y las imágenes de referencia nuevas.
 
+**Cómo quedó (etapa 7, sesión 48; decisión 52):**
+
+- **Tutorial:** los cuatro pasos van juntos después de VISTA 3D y antes de BOOSTERS, no inmediatamente después de LA MISIÓN: ACELERAR LA CUENTA corre el tiempo a ×10, y si estuviera antes del recorrido del panel la cuenta terminaría mientras se leen los otros carteles. LA PLATAFORMA y LA CUENTA FINAL son informativos con la mano en `cam-pad` (hasta que se elige esa cámara) y en `tab-count`; para eso la mano ahora también aparece en pasos informativos y `press` recibe la cámara 3D elegida (`TourView`). BOOSTERS manda la mano a `cam-auto` si la vista quedó en PLATAFORMA (con la cámara fija, los boosters se separan a ~50 km de ella). Una sola lista para los dos idiomas. Los tiempos y medidas salen de `countdown.ts`, `vehicle.ts`, `ascent.ts` y `constants.ts` (`formatSpan`, `formatTMinus`), también los que ya estaban copiados a mano. Todos los botones de cámara llevan `data-press` `cam-<modo>`.
+- **Guías:** Etapas empieza con la cuenta final (los hitos principales de `COUNTDOWN`, su T‑ y qué hace el simulador en cada uno); Acerca de la nave termina con la plataforma (`ML1`, postes, `TSMU_HEIGHT`, `PAD_ELEVATION`, `FLAME_TRENCH`, `LIGHTNING_MAST_HEIGHT`, `CRAWLERWAY`). Documentación suma cuatro enlaces que eligió Gastón: [CNT] y las hojas de datos de [ML1], [UMB] y [39B] (las cuatro respondieron 200 el 2026‑11‑23; la de [UMB] es la dirección a la que redirige la del §2). [CRW] no tiene URL guardada y no se buscó.
+- **Inicio:** el paso 1 dice que la misión empieza en la plataforma en T‑10 min; el modo demostración dice "desde T‑10 min a ×10" (`DEMO_WARP`, que ya era ese warp). Parámetro nuevo `?start`, que abre la pantalla de inicio para capturarla.
+- **`?met=-30`** sigue funcionando sin cambios (comprobado en capturas con `?met=-8`).
+
 ## 5. Etapas (un chat por etapa)
 
 Cada etapa termina con tests y build en verde, capturas headless (receta de `CLAUDE.md`), `process.md` al día y commit cuando Gastón lo pida. **Antes de la primera hay que correr `npm install`**, porque esta copia no tiene `node_modules`.
@@ -393,8 +419,8 @@ Cada etapa termina con tests y build en verde, capturas headless (receta de `CLA
 | 3 (**hecha**, sesión 44) | Modelo del ML‑1 y de LC‑39B, y apoyo del cohete en los postes | `render/pad.ts`, `render/vehicle.ts` (anclaje), `scene.ts` | Tests de las comprobaciones cruzadas (4.3). Capturas con PLATAFORMA, NAVE y TIERRA | grande |
 | 4 (**hecha**, sesión 45) | Animaciones de la cuenta y del despegue | `render/pad.ts`, `countdown.ts` | Capturas en T‑9 min, T‑7 min, T‑11 s, T‑1 s y T+3 s | mediano |
 | 5 (**hecha**, sesión 46) | Vapor, agua y nube del foso; orden de lo transparente | `render/padCloud.ts`, `render/depthSplit.ts`, `wake.ts`, `scene.ts` | Tests de la función pura: nada antes de su hito, determinista, sin partículas después de su vida. Capturas en T‑5 min, T‑3 s, T+5 s y T+20 s | mediano |
-| 6 | Textura del suelo: trazado, paleta, ruido y agua; parche regional si se elige en D6 | `render/padGround.ts`, `scripts/extract-palette.ts`, `theme.css` (y `optimize-images.ts`, `ASSETS.md`) | Capturas comparadas con las de la etapa 2 | mediano |
-| 7 | Tutorial, guías, inicio y documentación; sombras si el rendimiento alcanza | `steps.tsx`, `guides/content.tsx`, `StartScreen.tsx`, `CLAUDE.md` | Capturas con `?tour=n`; recorrido a mano por Gastón | chico |
+| 6 (**hecha**, sesión 47) | Textura del suelo: trazado, paleta, ruido y agua; parche regional si se elige en D6 (no se eligió) | `render/padGround.ts`, `scripts/extract-palette.ts`, `theme.css` (y `optimize-images.ts`, `ASSETS.md`) | Capturas comparadas con las de la etapa 2 | mediano |
+| 7 (**hecha**, sesión 48; sin sombras) | Tutorial, guías, inicio y documentación; sombras si el rendimiento alcanza | `steps.tsx`, `Tour.tsx`, `guides/content.tsx`, `StartScreen.tsx`, `store.ts`, `CLAUDE.md`, `README.md` | Tests de `tests/tutorial.test.ts`; capturas con `?tour=n`, `?guide=` y `?start`; recorrido a mano por Gastón (pendiente) | chico |
 
 Las etapas 1 y 2 son independientes entre sí. La 3 necesita la 2 (el piso) y la 0 (las medidas), y la 4 y la 5 necesitan la 3.
 

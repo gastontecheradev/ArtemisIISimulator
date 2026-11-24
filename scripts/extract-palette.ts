@@ -90,6 +90,16 @@ const SWATCHES: Swatch[] = [
   // of the photo taken a few seconds later, in the low Sun of the launch hour.
   { name: 'smoke-steam', image: 'launch/launch-1.jpg', box: [0.71, 0.85, 0.82, 0.94], pick: 'bright', top: 0.1, note: 'launch cloud steam, in the sun' },
   { name: 'smoke-tan', image: 'launch/launch-2.jpg', box: [0.44, 0.73, 0.5, 0.82], pick: 'median', note: 'booster smoke, in the sun' },
+  // Ground around the pad (stage 6): the same photo from the top of a lightning mast, in full sun. The
+  // grass is the green lawn east of the rocket (the photo from the grass, `ML1-image-3.jpg`, shows it
+  // dormant, olive brown); the scrub, the dense band beyond the mowed grounds; the sand, the bare patch
+  // by the round structure at the left edge (the beach is a few pixels wide there); the water, the open
+  // sea near the shore; the road, the paved apron of a service road.
+  { name: 'ground-grass', image: 'launch/ML-1-image-1.jpg', box: [0.86, 0.56, 0.9, 0.59], pick: 'median', note: 'mowed grass' },
+  { name: 'ground-scrub', image: 'launch/ML-1-image-1.jpg', box: [0.31, 0.429, 0.36, 0.438], pick: 'median', note: 'scrub beyond the mowed grounds' },
+  { name: 'ground-sand', image: 'launch/ML-1-image-1.jpg', box: [0.082, 0.705, 0.1, 0.72], pick: 'median', note: 'bare sand' },
+  { name: 'ground-water', image: 'launch/ML-1-image-1.jpg', box: [0.75, 0.31, 0.9, 0.36], pick: 'median', note: 'sea near the shore' },
+  { name: 'ground-road', image: 'launch/ML-1-image-1.jpg', box: [0.915, 0.598, 0.945, 0.612], pick: 'median', note: 'paved service road' },
 ];
 
 const score: Record<Exclude<Criterion, 'median'>, (p: Rgb) => number> = {

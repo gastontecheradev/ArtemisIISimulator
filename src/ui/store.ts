@@ -16,7 +16,8 @@ const query = new URLSearchParams(typeof location === 'undefined' ? '' : locatio
  * - `?auto`: leaves the automatic crew enabled.
  * - `?warp=<n>`: starts running at that simulation speed.
  * - `?tour=<n>`: opens the tutorial at step n (from 0).
- * Any of them skips the start screen.
+ * Any of them skips the start screen. `?start` opens the start screen directly, without the
+ * language and guides menus (for screenshots; the language comes from `?lang`).
  */
 const skipIntro = ['met', 'auto', 'warp', 'tour'].some((k) => query.has(k));
 // ?lang=es sets the language without going through the menu.
@@ -106,7 +107,8 @@ const pick = <T extends string>(key: string, options: readonly T[], fallback: T)
   return options.includes(v as T) ? (v as T) : fallback;
 };
 
-const CAMERAS = ['auto', 'overview', 'ship', 'earth', 'moon', 'pad'] as const;
+/** 3D camera modes, in the order of the toolbar and of the keys 1–6. */
+export const CAMERA_MODES: readonly CameraMode[] = ['auto', 'overview', 'ship', 'earth', 'moon', 'pad'];
 
 /** Settings shared by both views, plus each one's camera. */
 export interface ViewState {
@@ -117,7 +119,7 @@ export interface ViewState {
 // Also via URL: ?cam3d=earth (or pad, the pad camera), ?map=inertial (2D map only).
 const view = createValue<ViewState>({
   mapFrame: pick('map', ['inertial', 'rotating'] as const, 'rotating'),
-  camera: { '2d': 'overview', '3d': pick('cam3d', CAMERAS, 'auto'), inset: 'earth' },
+  camera: { '2d': 'overview', '3d': pick('cam3d', CAMERA_MODES, 'auto'), inset: 'earth' },
 });
 
 export const useViewState = view.use;
@@ -160,7 +162,7 @@ export const setPanelUi = (patch: Partial<PanelUi>): void => panelUi.set({ ...pa
 
 /** Pre-mission screens: language, guides and start screen. null = mission in progress. */
 export type IntroStep = 'lang' | 'guides' | 'start' | null;
-const intro = createValue<IntroStep>(skipIntro ? null : 'lang');
+const intro = createValue<IntroStep>(skipIntro ? null : query.has('start') ? 'start' : 'lang');
 export const useIntro = intro.use;
 export const setIntro = intro.set;
 
@@ -192,12 +194,21 @@ export function showIntro(): void {
   intro.set('start');
 }
 
-/** Starts a new mission. With `tutorial` it starts paused and with the guided tour. */
+/**
+ * Simulation speed of the demonstration mode. With the automatic crew the warp does not drop to ×1
+ * at T‑33 s, so the demo keeps it from the start of the terminal count until the user changes it.
+ */
+export const DEMO_WARP = 10;
+
+/**
+ * Starts a new mission at the start of the terminal count (T‑10 min). With `tutorial` it starts
+ * paused and with the guided tour; the demonstration mode (`autoCrew`) starts running at DEMO_WARP.
+ */
 export function startMission(opts: { autoCrew: boolean; tutorial: boolean }): void {
   act(() => {
     const s = reset(MISSION_PARAMS, { autoCrew: opts.autoCrew });
     if (opts.tutorial) return s;
-    return play(opts.autoCrew ? setWarp(s, 10) : s);
+    return play(opts.autoCrew ? setWarp(s, DEMO_WARP) : s);
   });
   tour.set(opts.tutorial ? 0 : null);
   intro.set(null);
