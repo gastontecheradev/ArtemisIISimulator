@@ -9,9 +9,9 @@ import { GROUND_RADIUS_M, TRENCH } from './padGround';
  * generic (D6, changed in session 42: no map or photo is traced), with the orientation the sources give:
  * the flame trench to the north ([39B]), the crawlerway from the south, the Atlantic to the east. It is a
  * list of shapes in meters east and north of the rocket's axis, painted into two canvas textures (near
- * and far) that the ground's material samples by its position; a value noise in three scales breaks up
- * the flat colors up close, and the whole layout fades into Earth's texture before the ground's edge,
- * so the seam with the sphere does not show.
+ * and far) that the ground's material samples by its position, in flat colors (since session 50, at
+ * Gastón's request, without the slab joints and the detail noise it had); the whole layout fades into
+ * Earth's texture before the ground's edge, so the seam with the sphere does not show.
  *
  * Sources and choices:
  * - The crawlerway ([CRW] in constants.ts, CRAWLERWAY): two 40 ft gravel lanes either side of a 50 ft
@@ -24,11 +24,11 @@ import { GROUND_RADIUS_M, TRENCH } from './padGround';
  *   places them (the texture's pixels only mix them with land).
  * - Everything else is a drawing choice (marked in LAYOUT): the mowed grounds and their perimeter road,
  *   the access road and the service roads to the tanks, the concrete aprons under the tanks, the water
- *   tower and the masts, the beach's width, the apron at the trench's exit and the slab joints. The
+ *   tower and the masts, the beach's width and the apron at the trench's exit. The
  *   elevated pad (its top and its slope) is concrete, as in the photos of the pad (`ML1-image-3.jpg`,
  *   `ML-1-image-1.jpg`).
- * - Colors: the palette sampled from `ML-1-image-1.jpg` (npm run palette), plus three tones derived from
- *   it by mixing with black (the crawlerway's gravel, the trench floor and the slab joints).
+ * - Colors: the palette sampled from `ML-1-image-1.jpg` (npm run palette), plus two tones derived from
+ *   it by mixing with black (the crawlerway's gravel and the trench floor).
  */
 
 /** What a point of the ground is made of. */
@@ -39,11 +39,8 @@ type P2 = readonly [number, number];
 /** A shape of the layout, in meters east and north of the rocket's axis. */
 export type LayoutShape =
   | { readonly kind: 'polygon'; readonly surface: Surface; readonly points: readonly P2[] }
-  /**
-   * A band of `width` along a polyline, with round ends and joints (as a canvas stroke draws it). With
-   * `slabs`, a two-point band also shows the joints of its concrete slabs up close (SLAB_JOINTS).
-   */
-  | { readonly kind: 'stroke'; readonly surface: Surface; readonly points: readonly P2[]; readonly width: number; readonly slabs?: true }
+  /** A band of `width` along a polyline, with round ends and joints (as a canvas stroke draws it). */
+  | { readonly kind: 'stroke'; readonly surface: Surface; readonly points: readonly P2[]; readonly width: number }
   | { readonly kind: 'disc'; readonly surface: Surface; readonly center: P2; readonly radius: number };
 
 /** Surface where no shape is: the scrub that covers the cape around the mowed grounds. */
@@ -128,7 +125,6 @@ export function buildGroundLayout(): LayoutShape[] {
     surface: 'concrete',
     points: [[0, -PAD_TOP_SOUTH * 1000], [0, PAD_TOP_NORTH * 1000]],
     width: 2 * ((PAD_TOP_RADIUS + PAD_SLOPE_RUN) * 1000 + LAYOUT.padMargin),
-    slabs: true,
   });
   const apron = LAYOUT.trenchApron;
   out.push({ kind: 'polygon', surface: 'concrete', points: [[-apron.halfWidth, TRENCH.north - 4], [apron.halfWidth, TRENCH.north - 4], [apron.halfWidth, apron.north], [-apron.halfWidth, apron.north]] });
@@ -187,7 +183,7 @@ export function surfaceAt(east: number, north: number, layout: readonly LayoutSh
  */
 export const LAYOUT_FADE = { start: 3000, end: GROUND_RADIUS_M } as const;
 
-/** Weight of the layout (and of its detail noise) at horizontal distance `rho` (m) from the launch point. */
+/** Weight of the layout at horizontal distance `rho` (m) from the launch point. */
 export function layoutWeight(rho: number): number {
   const x = Math.min(1, Math.max(0, (rho - LAYOUT_FADE.start) / (LAYOUT_FADE.end - LAYOUT_FADE.start)));
   return 1 - x * x * (3 - 2 * x);
@@ -212,26 +208,8 @@ export function nearWeight(east: number, north: number): number {
   return 1 - x * x * (3 - 2 * x);
 }
 
-/**
- * Detail noise: three octaves of value noise (wavelength m, relative amplitude), each fading out as its
- * wavelength nears the size of a pixel on the ground, so far ground shows the layout and near ground its
- * grain (drawing choices). The color is multiplied by 1 + their sum; on water by a third of it.
- */
-export const DETAIL_OCTAVES = [
-  { scale: 0.6, amp: 0.16 },
-  { scale: 4, amp: 0.13 },
-  { scale: 26, amp: 0.11 },
-] as const;
-const WATER_DETAIL = 1 / 3;
 /** Roughness of the water, for the Sun's glint (drawing choice; the land keeps Earth's 0.95). */
 const WATER_ROUGHNESS = 0.2;
-
-/**
- * Joints between the concrete slabs of the elevated pad, only in the near texture (drawing choice: the
- * photo of the pad from the grass, `ML1-image-3.jpg`, shows its slope paved in rows of slabs; without
- * them, up close, the slope read as a dune). A square grid along east and north.
- */
-export const SLAB_JOINTS = { spacing: 6, width: 0.35, darken: 0.3 } as const;
 
 /** Colors of the surfaces (#rrggbb). */
 export type LayoutColors = Readonly<Record<Surface, string>>;
@@ -248,9 +226,6 @@ type Ctx = Pick<
   | 'fill'
   | 'stroke'
   | 'arc'
-  | 'save'
-  | 'restore'
-  | 'clip'
   | 'fillStyle'
   | 'strokeStyle'
   | 'lineWidth'
@@ -258,47 +233,15 @@ type Ctx = Pick<
   | 'lineJoin'
 >;
 
-/** Grid of slab joints over a two-point band (clipped to it), in `color`. */
-function paintSlabs(c: Ctx, shape: Extract<LayoutShape, { kind: 'stroke' }>, color: string): void {
-  const [a, b] = shape.points;
-  const r = shape.width / 2;
-  const heading = Math.atan2(b[1] - a[1], b[0] - a[0]);
-  c.save();
-  c.beginPath();
-  c.arc(b[0], b[1], r, heading - Math.PI / 2, heading + Math.PI / 2);
-  c.arc(a[0], a[1], r, heading + Math.PI / 2, heading + (3 * Math.PI) / 2);
-  c.closePath();
-  c.clip();
-  const e0 = Math.min(a[0], b[0]) - r;
-  const e1 = Math.max(a[0], b[0]) + r;
-  const n0 = Math.min(a[1], b[1]) - r;
-  const n1 = Math.max(a[1], b[1]) + r;
-  const s = SLAB_JOINTS.spacing;
-  c.beginPath();
-  for (let e = Math.ceil(e0 / s) * s; e <= e1; e += s) {
-    c.moveTo(e, n0);
-    c.lineTo(e, n1);
-  }
-  for (let n = Math.ceil(n0 / s) * s; n <= n1; n += s) {
-    c.moveTo(e0, n);
-    c.lineTo(e1, n);
-  }
-  c.strokeStyle = color;
-  c.lineWidth = SLAB_JOINTS.width;
-  c.stroke();
-  c.restore();
-}
-
 /**
  * Paints the layout into a `size` × `size` canvas covering ±`half` m (east to the right, north up),
- * each surface in `color(surface)`; with `slabs`, the slab joints in that color.
+ * each surface in `color(surface)`.
  */
 export function paintLayout(
   c: Ctx,
   size: number,
   half: number,
   color: (s: Surface) => string,
-  slabs: string | null = null,
   layout: readonly LayoutShape[] = GROUND_LAYOUT,
 ): void {
   c.setTransform(1, 0, 0, 1, 0, 0);
@@ -325,22 +268,20 @@ export function paintLayout(
       c.strokeStyle = color(s.surface);
       c.lineWidth = s.width;
       c.stroke();
-      if (slabs && s.slabs && s.points.length === 2) paintSlabs(c, s, slabs);
     }
   }
 }
 
 /**
- * One layout texture: the colors in RGB and, in alpha, where there is water (for its glint and its
- * fainter noise). Painted twice in a canvas (colors, then the water mask) and merged, because a canvas
- * stores premultiplied alpha.
+ * One layout texture: the colors in RGB and, in alpha, where there is water (for its glint). Painted
+ * twice in a canvas (colors, then the water mask) and merged, because a canvas stores premultiplied alpha.
  */
-function layoutTexture(size: number, half: number, colors: LayoutColors, slabs: string | null, anisotropy: number): THREE.DataTexture {
+function layoutTexture(size: number, half: number, colors: LayoutColors, anisotropy: number): THREE.DataTexture {
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const c = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
-  paintLayout(c, size, half, (s) => colors[s], slabs);
+  paintLayout(c, size, half, (s) => colors[s]);
   const rgb = c.getImageData(0, 0, size, size).data;
   paintLayout(c, size, half, (s) => (s === 'water' ? '#ffffff' : '#000000'));
   const mask = c.getImageData(0, 0, size, size).data;
@@ -369,26 +310,11 @@ const f = (x: number): string => x.toFixed(4);
 /** GLSL of the layout, from the same constants the tests read. `vGroundEN` is the ground's east-north position (m). */
 function layoutGlsl(): { head: string; apply: string; roughness: string } {
   const { near, far, blend } = LAYOUT_TEXTURES;
-  const octaves = DETAIL_OCTAVES.map(
-    (o, i) =>
-      `detail += ${f(o.amp)} * (2.0 * layoutNoise(en * ${(1 / o.scale).toFixed(6)} + vec2(${f(17.3 * i)}, ${f(-41.9 * i)})) - 1.0) * (1.0 - smoothstep(${f(0.2 * o.scale)}, ${f(0.6 * o.scale)}, px));`,
-  );
   return {
     head: `
       uniform sampler2D uLayoutNear;
       uniform sampler2D uLayoutFar;
-      float groundWater = 0.0;
-      float layoutHash(vec2 p) {
-        vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-        p3 += dot(p3, p3.yzx + 33.33);
-        return fract((p3.x + p3.y) * p3.z);
-      }
-      float layoutNoise(vec2 p) {
-        vec2 i = floor(p);
-        vec2 q = fract(p);
-        vec2 u = q * q * (3.0 - 2.0 * q);
-        return mix(mix(layoutHash(i), layoutHash(i + vec2(1.0, 0.0)), u.x), mix(layoutHash(i + vec2(0.0, 1.0)), layoutHash(i + vec2(1.0, 1.0)), u.x), u.y);
-      }`,
+      float groundWater = 0.0;`,
     apply: `
       {
         vec2 en = vGroundEN;
@@ -396,11 +322,7 @@ function layoutGlsl(): { head: string; apply: string; roughness: string } {
         vec4 farT = texture(uLayoutFar, vec2(0.5) + vec2(1.0, -1.0) * en / ${f(2 * far.half)});
         float m = max(abs(en.x), abs(en.y)) / ${f(near.half)};
         vec4 lay = mix(farT, nearT, 1.0 - smoothstep(${f(blend[0])}, ${f(blend[1])}, m));
-        float px = max(length(dFdx(en)), length(dFdy(en)));
-        float detail = 0.0;
-        ${octaves.join('\n        ')}
         float w = 1.0 - smoothstep(${f(LAYOUT_FADE.start)}, ${f(LAYOUT_FADE.end)}, length(en));
-        lay.rgb *= 1.0 + detail * (1.0 - ${f(1 - WATER_DETAIL)} * lay.a);
         geoTexel = mix(geoTexel, vec4(lay.rgb, 1.0), w);
         groundWater = lay.a * w;
       }`,
@@ -429,8 +351,8 @@ export function createGroundLayout(
     crawler: darker(colors.road, 0.2),
     trench: darker(colors.concrete, 0.35),
   };
-  const nearTex = layoutTexture(LAYOUT_TEXTURES.near.size, LAYOUT_TEXTURES.near.half, all, darker(colors.concrete, SLAB_JOINTS.darken), anisotropy);
-  const farTex = layoutTexture(LAYOUT_TEXTURES.far.size, LAYOUT_TEXTURES.far.half, all, null, anisotropy);
+  const nearTex = layoutTexture(LAYOUT_TEXTURES.near.size, LAYOUT_TEXTURES.near.half, all, anisotropy);
+  const farTex = layoutTexture(LAYOUT_TEXTURES.far.size, LAYOUT_TEXTURES.far.half, all, anisotropy);
   return {
     surface: {
       uniforms: { uLayoutNear: { value: nearTex }, uLayoutFar: { value: farTex } },

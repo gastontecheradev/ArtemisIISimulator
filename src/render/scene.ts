@@ -334,7 +334,6 @@ export function createTrajectoryView(container: HTMLElement, dim: ViewDim, deps:
           hood: cssVar(container, '--c-pad-hood'),
           spark: vehicleColors.flame,
         },
-        anisotropy,
       )
     : null;
   const debrisGroup = new THREE.Group();

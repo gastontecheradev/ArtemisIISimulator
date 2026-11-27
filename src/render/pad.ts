@@ -23,8 +23,8 @@ import { PAD_ANCHOR_STATION, SRB_Y, padSurfaceNorth } from './vehicle';
 
 /*
  * The launch pad in the 3D view (launch plan, §4.3): Mobile Launcher 1 and LC‑39B, built like the
- * vehicle model (render/vehicle.ts): pieces in meters, procedural geometry merged by material and
- * canvas textures, with no logos or lettering.
+ * vehicle model (render/vehicle.ts): pieces in meters, procedural geometry merged by material, in
+ * flat colors (no textures since session 50), with no logos or lettering.
  *
  * Frame: east-north-up meters from the sea-level point under the rocket's axis (the simulated launch
  * point), the frame of the pad's ground (padGround.ts), with its floating origin and turning with
@@ -626,30 +626,9 @@ function grid(rows: readonly (readonly P3[])[]): THREE.BufferGeometry {
     }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(rows.length * cols * 2), 2));
   g.setIndex(index);
   g.computeVertexNormals();
   return g;
-}
-
-/**
- * Texture coordinates projected along the dominant axis of each vertex's normal (top faces by east
- * and north, the walls by their horizontal direction and the height), in tiles of `tile` m, so the
- * same texture keeps its scale on every piece of a merged mesh.
- */
-function projectUV(geo: THREE.BufferGeometry, tile: number): void {
-  const pos = geo.getAttribute('position');
-  const nor = geo.getAttribute('normal');
-  const uv = new Float32Array(pos.count * 2);
-  for (let i = 0; i < pos.count; i++) {
-    const ax = Math.abs(nor.getX(i));
-    const ay = Math.abs(nor.getY(i));
-    const az = Math.abs(nor.getZ(i));
-    const [u, v] = az >= ax && az >= ay ? [pos.getX(i), pos.getY(i)] : ax >= ay ? [pos.getY(i), pos.getZ(i)] : [pos.getX(i), pos.getZ(i)];
-    uv[2 * i] = u / tile;
-    uv[2 * i + 1] = v / tile;
-  }
-  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
 }
 
 /** Rectangle minus the holes inside it, as rectangles (bands between the holes' north and south edges). */
@@ -908,17 +887,13 @@ function flameTrench(add: Add): void {
   const radius = PAD - TRENCH.floor;
   const steps = 16;
   const rows: P3[][] = [];
-  const uv: number[] = [];
   for (let i = 0; i <= steps; i++) {
     const phi = ((Math.PI / 2) * i) / steps;
     const n = TRENCH.south + radius * (1 - Math.cos(phi));
     const z = PAD - radius * Math.sin(phi) + drop(0, n);
     rows.push([[hw, n, z], [-hw, n, z]]);
-    uv.push(hw / 2.4, (radius * phi) / 1.2, -hw / 2.4, (radius * phi) / 1.2);
   }
-  const deflector = grid(rows);
-  deflector.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv), 2));
-  add('plates', deflector);
+  add('plates', grid(rows));
 }
 
 /** Line segments of the wires: the masts' catenary and the egress cables. */
@@ -944,7 +919,7 @@ function wireSegments(): Float32Array {
   return Float32Array.from(out);
 }
 
-// ---------- Materials and textures ----------
+// ---------- Materials ----------
 
 export interface PadColors {
   readonly steel: string;
@@ -959,111 +934,29 @@ export interface PadColors {
 /** Mixes a palette color with black (fraction `f`), as the palette's derived tones do. */
 export const darker = (c: string, f: number): string => `#${new THREE.Color(c).lerp(new THREE.Color(0x000000), f).getHexString()}`;
 
-/** Deterministic pseudo-random sequence (mulberry32), so the textures look the same every time. */
-function random(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** Canvas texture of grays that darken the material's color (white = the color itself). */
-function canvasTexture(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const c = canvas.getContext('2d') as CanvasRenderingContext2D;
-  c.fillStyle = '#ffffff';
-  c.fillRect(0, 0, w, h);
-  draw(c);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  return tex;
-}
-
-/** Texture tile (m) of the materials whose coordinates are projected (projectUV). */
-const TILE: Partial<Record<Mat, number>> = { clad: 4, base: 4, hood: 4, concrete: 8, floor: 8 };
-
-function createMaterials(colors: PadColors, anisotropy: number): { mats: Record<Mat, THREE.Material>; dispose(): void } {
-  const rnd = random(20260401);
-  // Cladding: panels 1 m wide and 2 m tall in a 4 m tile, with a few lighter and darker ones.
-  const panels = canvasTexture(256, 256, (c) => {
-    for (let i = 0; i < 4; i++)
-      for (let j = 0; j < 2; j++) {
-        c.fillStyle = `rgba(0,0,0,${0.02 + rnd() * 0.08})`;
-        c.fillRect(i * 64, j * 128, 64, 128);
-      }
-    c.fillStyle = 'rgba(0,0,0,0.35)';
-    for (let i = 0; i < 4; i++) c.fillRect(i * 64, 0, 2, 256);
-    for (let j = 0; j < 2; j++) c.fillRect(0, j * 128, 256, 3);
-  });
-  // Concrete: soft blotches and the joints of 4 m slabs in an 8 m tile.
-  const concrete = canvasTexture(256, 256, (c) => {
-    for (let i = 0; i < 900; i++) {
-      c.fillStyle = `rgba(0,0,0,${0.01 + rnd() * 0.03})`;
-      c.beginPath();
-      c.ellipse(rnd() * 256, rnd() * 256, 2 + rnd() * 10, 2 + rnd() * 8, 0, 0, Math.PI * 2);
-      c.fill();
-    }
-    c.fillStyle = 'rgba(0,0,0,0.3)';
-    c.fillRect(0, 0, 256, 2);
-    c.fillRect(0, 128, 256, 2);
-    c.fillRect(0, 0, 2, 256);
-    c.fillRect(128, 0, 2, 256);
-  });
-  // Deflector plates: 1.2 × 0.6 m in a 2.4 × 1.2 m tile, each a different shade (heat and wear).
-  const plates = canvasTexture(256, 128, (c) => {
-    for (let i = 0; i < 2; i++)
-      for (let j = 0; j < 2; j++) {
-        c.fillStyle = `rgba(0,0,0,${0.05 + rnd() * 0.25})`;
-        c.fillRect(i * 128, j * 64, 128, 64);
-      }
-    c.fillStyle = 'rgba(0,0,0,0.5)';
-    c.fillRect(0, 0, 256, 3);
-    c.fillRect(0, 64, 256, 3);
-    c.fillRect(0, 0, 3, 128);
-    c.fillRect(128, 0, 3, 128);
-  });
-  // Fiberglass masts: the dark spiral wrap of the launch photo (drawing choice: two turns per 6 m).
-  const spiral = canvasTexture(64, 64, (c) => {
-    c.fillStyle = 'rgba(0,0,0,0.55)';
-    for (const dx of [-64, 0, 64]) {
-      c.beginPath();
-      c.moveTo(dx, 64);
-      c.lineTo(dx + 14, 64);
-      c.lineTo(dx + 78, 0);
-      c.lineTo(dx + 64, 0);
-      c.closePath();
-      c.fill();
-    }
-  });
-  spiral.repeat.set(2, 12);
-  const textures = [panels, concrete, plates, spiral];
-  for (const t of textures) t.anisotropy = anisotropy;
+/**
+ * The materials, in flat colors: since session 50 (Gastón's request) no textures (before, canvas
+ * textures of cladding panels, concrete slabs, deflector plates and the masts' spiral wrap).
+ */
+function createMaterials(colors: PadColors): { mats: Record<Mat, THREE.Material>; dispose(): void } {
   const std = (color: string, more: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial =>
     new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.1, ...more });
   const two = THREE.DoubleSide;
   const mats: Record<Mat, THREE.Material> = {
     steel: std(colors.steel, { roughness: 0.55, metalness: 0.3 }),
-    clad: std(colors.steel, { map: panels, roughness: 0.6, metalness: 0.2 }),
-    base: std(colors.base, { map: panels, roughness: 0.65, metalness: 0.2 }),
-    hood: std(colors.hood, { map: panels, roughness: 0.6, metalness: 0.2 }),
+    clad: std(colors.steel, { roughness: 0.6, metalness: 0.2 }),
+    base: std(colors.base, { roughness: 0.65, metalness: 0.2 }),
+    hood: std(colors.hood, { roughness: 0.6, metalness: 0.2 }),
     white: std(colors.tank, { roughness: 0.5 }),
-    fiberglass: std(colors.tank, { map: spiral, roughness: 0.5, side: two }),
-    concrete: std(colors.concrete, { map: concrete, roughness: 0.9, metalness: 0, side: two }),
+    fiberglass: std(colors.tank, { roughness: 0.5, side: two }),
+    concrete: std(colors.concrete, { roughness: 0.9, metalness: 0, side: two }),
     // The trench floor and the deflector, darkened by the exhaust (mixed with black).
-    floor: std(darker(colors.concrete, 0.35), { map: concrete, roughness: 0.95, metalness: 0, side: two }),
-    plates: std(darker(colors.base, 0.3), { map: plates, roughness: 0.6, metalness: 0.4, side: two }),
+    floor: std(darker(colors.concrete, 0.35), { roughness: 0.95, metalness: 0, side: two }),
+    plates: std(darker(colors.base, 0.3), { roughness: 0.6, metalness: 0.4, side: two }),
   };
   return {
     mats,
     dispose() {
-      textures.forEach((t) => t.dispose());
       Object.values(mats).forEach((m) => m.dispose());
     },
   };
@@ -1081,14 +974,14 @@ export interface PadModel {
 }
 
 /** Procedural model of the Mobile Launcher and LC‑39B. */
-export function createPadModel(colors: PadColors, anisotropy = 1): PadModel {
-  const { mats, dispose: disposeMats } = createMaterials(colors, anisotropy);
+export function createPadModel(colors: PadColors): PadModel {
+  const { mats, dispose: disposeMats } = createMaterials(colors);
   type Bins = Map<Mat, THREE.BufferGeometry[]>;
   const adder =
     (bins: Bins): Add =>
     (mat, geo) => {
-      const tile = TILE[mat];
-      if (tile) projectUV(geo, tile);
+      // No material wears a texture: without coordinates, every piece merges with the others of its material.
+      if (geo.hasAttribute('uv')) geo.deleteAttribute('uv');
       const list = bins.get(mat);
       if (list) list.push(geo);
       else bins.set(mat, [geo]);

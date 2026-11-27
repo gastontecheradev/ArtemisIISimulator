@@ -1,6 +1,7 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { flyFrom } from '../scripts/lib/calibration';
-import { ARMS, CONTACT_GAP, DECK, DECK_HOLES, ML_LAYOUT, MASTS, POST_HALF, Rect, SUPPORT_POSTS, TSMUS, deckHeight, rectMinusHoles, surfaceNorthOver } from '../src/render/pad';
+import { ARMS, CONTACT_GAP, DECK, DECK_HOLES, ML_LAYOUT, MASTS, POST_HALF, Rect, SUPPORT_POSTS, TSMUS, createPadModel, deckHeight, rectMinusHoles, surfaceNorthOver } from '../src/render/pad';
 import { TRENCH, padRelief } from '../src/render/padGround';
 import { CM_HATCH, PAD_ANCHOR_STATION, SRB_Y, STATIONS, padSurfaceNorth } from '../src/render/vehicle';
 import { FT_TO_KM, LAUNCH_SITE_HEIGHT, PAD_ELEVATION, R_EARTH, ROCKET_ON_ML, WATER_TOWER } from '../src/sim/constants';
@@ -132,5 +133,20 @@ describe('Pad model layout', () => {
     for (const [e, n] of MASTS) expect(padRelief(e, n)).toBe(0);
     const water = [(WATER_TOWER.east - ROCKET_ON_ML.east) * 1000, (WATER_TOWER.north - ROCKET_ON_ML.north) * 1000] as const;
     expect(padRelief(water[0], water[1])).toBeLessThan(0.5);
+  });
+
+  it('builds the whole model in flat colors, with no textures (session 50)', () => {
+    // Merging a material's pieces throws if they differ in attributes: building it is the check.
+    const model = createPadModel({ steel: '#888888', base: '#555555', concrete: '#aaaaaa', tank: '#eeeeee', hood: '#666666', spark: '#ffaa00' });
+    const meshes: THREE.Mesh[] = [];
+    model.group.traverse((o) => {
+      if (o instanceof THREE.Mesh) meshes.push(o);
+    });
+    expect(meshes.length).toBeGreaterThan(5);
+    for (const m of meshes) {
+      expect((m.material as THREE.MeshStandardMaterial).map).toBeNull();
+      expect(m.geometry.hasAttribute('uv')).toBe(false);
+    }
+    model.dispose();
   });
 });
